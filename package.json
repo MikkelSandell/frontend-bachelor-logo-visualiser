@@ -1,0 +1,20 @@
+{
+  "name": "logo-visualizer-frontend",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:admin": "npm run dev --workspace=apps/admin",
+    "dev:viewer": "npm run dev --workspace=apps/viewer",
+    "build:admin": "npm run build --workspace=apps/admin",
+    "build:viewer": "npm run build --workspace=apps/viewer",
+    "build": "npm run build --workspaces",
+    "lint": "npm run lint --workspaces --if-present",
+    "type-check": "npm run type-check --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}
