@@ -6,6 +6,7 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "concurrently \"npm run dev:admin\" \"npm run dev:viewer\"",
     "dev:admin": "npm run dev --workspace=apps/admin",
     "dev:viewer": "npm run dev --workspace=apps/viewer",
     "build:admin": "npm run build --workspace=apps/admin",
@@ -15,6 +16,7 @@
     "type-check": "npm run type-check --workspaces --if-present"
   },
   "devDependencies": {
+    "concurrently": "^9.2.1",
     "typescript": "^5.4.5"
   }
 }

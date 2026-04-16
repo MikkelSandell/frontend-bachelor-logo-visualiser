@@ -3,6 +3,8 @@ import { Stage, Layer, Image as KonvaImage, Rect } from "react-konva";
 import useImage from "use-image";
 import type { Product, PrintZone, PrintTechnique } from "@logo-visualizer/shared";
 import { ZoneForm } from "../ZoneForm/ZoneForm";
+import { Button } from "../ui/button";
+import { Trash2 } from "lucide-react";
 
 interface Props {
   product: Product;
@@ -99,63 +101,64 @@ export function ZoneEditor({
   }
 
   return (
-    <div>
-      <p style={{ marginBottom: "0.5rem" }}>
-        Tegn en zone ved at klikke og trække på billedet.
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">
+        Tegn en zone ved at klikke og trække på billedet. Dobbeltklik på en eksisterende zone for at redigere den.
       </p>
 
-      <Stage
-        width={canvasWidth}
-        height={canvasHeight}
-        style={{ border: "1px solid #ccc", cursor: "crosshair" }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-      >
-        <Layer>
-          {/* Product image */}
-          {productImage && (
-            <KonvaImage
-              image={productImage}
-              width={canvasWidth}
-              height={canvasHeight}
-            />
-          )}
+      <div className="overflow-auto">
+        <Stage
+          width={canvasWidth}
+          height={canvasHeight}
+          style={{ border: "1px solid #e8e8e8", borderRadius: "0.5rem", cursor: "crosshair" }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+        >
+          <Layer>
+            {/* Product image */}
+            {productImage && (
+              <KonvaImage
+                image={productImage}
+                width={canvasWidth}
+                height={canvasHeight}
+              />
+            )}
 
-          {/* Existing zones (A4 – click to select; double-click to edit) */}
-          {product.printZones.map((zone) => (
-            <Rect
-              key={zone.id}
-              x={zone.x * scale}
-              y={zone.y * scale}
-              width={zone.width * scale}
-              height={zone.height * scale}
-              stroke={selectedZoneId === zone.id ? "#0057ff" : "#ff6600"}
-              strokeWidth={2}
-              fill="rgba(255,100,0,0.15)"
-              onClick={() => setSelectedZoneId(zone.id)}
-              onDblClick={() => {
-                setSelectedZoneId(zone.id);
-                setEditingZone(zone);
-              }}
-            />
-          ))}
+            {/* Existing zones (A4 – click to select; double-click to edit) */}
+            {product.printZones.map((zone) => (
+              <Rect
+                key={zone.id}
+                x={zone.x * scale}
+                y={zone.y * scale}
+                width={zone.width * scale}
+                height={zone.height * scale}
+                stroke={selectedZoneId === zone.id ? "#0057ff" : "#ff6633"}
+                strokeWidth={2}
+                fill="rgba(255,102,51,0.12)"
+                onClick={() => setSelectedZoneId(zone.id)}
+                onDblClick={() => {
+                  setSelectedZoneId(zone.id);
+                  setEditingZone(zone);
+                }}
+              />
+            ))}
 
-          {/* In-progress drawing */}
-          {drawing && (
-            <Rect
-              x={drawing.x}
-              y={drawing.y}
-              width={drawing.width}
-              height={drawing.height}
-              stroke="#0057ff"
-              strokeWidth={2}
-              dash={[6, 3]}
-            />
-          )}
-
-        </Layer>
-      </Stage>
+            {/* In-progress drawing */}
+            {drawing && (
+              <Rect
+                x={drawing.x}
+                y={drawing.y}
+                width={drawing.width}
+                height={drawing.height}
+                stroke="#0057ff"
+                strokeWidth={2}
+                dash={[6, 3]}
+              />
+            )}
+          </Layer>
+        </Stage>
+      </div>
 
       {/* A3 – zone metadata form shown after drawing */}
       {pendingZone && (
@@ -181,16 +184,28 @@ export function ZoneEditor({
 
       {/* A4 – selected zone actions */}
       {selectedZoneId && !editingZone && (
-        <div style={{ marginTop: "0.5rem" }}>
-          <button
+        <div className="flex items-center gap-2 mt-2">
+          <Button
+            variant="destructive"
+            size="sm"
             onClick={() => {
               onZoneDeleted(selectedZoneId);
               setSelectedZoneId(null);
             }}
-            style={{ color: "red" }}
           >
+            <Trash2 className="h-4 w-4 mr-2" />
             Slet zone
-          </button>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const zone = product.printZones.find((z) => z.id === selectedZoneId);
+              if (zone) setEditingZone(zone);
+            }}
+          >
+            Rediger zone
+          </Button>
         </div>
       )}
     </div>

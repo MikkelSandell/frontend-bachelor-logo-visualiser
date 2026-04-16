@@ -1,154 +1,120 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import type { Product, PrintZone } from "@logo-visualizer/shared";
-import {
-  getProduct,
-  createProduct,
-  updateProduct,
-  uploadProductImage,
-  createZone,
-  updateZone,
-  deleteZone,
-} from "../api/productApi";
-import { ZoneEditor } from "../components/ZoneEditor/ZoneEditor";
+import { ArrowLeft, Loader2 } from "lucide-react";
+import type { Product } from "@logo-visualizer/shared";
+import { getMidoceanProduct } from "../api/productApi";
+import { Button } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
 
 export function ProductEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const isNew = id === undefined;
 
   const [product, setProduct] = useState<Product | null>(null);
-  const [title, setTitle] = useState("");
-  const [loading, setLoading] = useState(!isNew);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!isNew) {
-      getProduct(id)
-        .then((r) => {
-          setProduct(r.data);
-          setTitle(r.data.title);
-        })
-        .finally(() => setLoading(false));
-    }
-  }, [id, isNew]);
+    if (!id) return;
+    getMidoceanProduct(id)
+      .then(setProduct)
+      .finally(() => setLoading(false));
+  }, [id]);
 
-  // A1 – upload product image
-  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const result = await uploadProductImage(file);
-    if (!result.success) return;
-
-    if (isNew) {
-      // Create the product first with the uploaded image
-      const created = await createProduct({
-        title: title || file.name,
-        imageUrl: result.data.url,
-        imageWidth: result.data.width,
-        imageHeight: result.data.height,
-      });
-      if (created.success) {
-        navigate(`/products/${created.data.id}`, { replace: true });
-      }
-    } else if (product) {
-      const updated = await updateProduct(product.id, {
-        imageUrl: result.data.url,
-        imageWidth: result.data.width,
-        imageHeight: result.data.height,
-      });
-      if (updated.success) setProduct(updated.data);
-    }
-  }
-
-  async function handleTitleSave() {
-    if (!product) return;
-    const updated = await updateProduct(product.id, { title });
-    if (updated.success) setProduct(updated.data);
-  }
-
-  // A2/A3 – zone created via ZoneEditor canvas
-  async function handleZoneCreated(zone: Omit<PrintZone, "id">) {
-    if (!product) return;
-    const result = await createZone(product.id, zone);
-    if (result.success) {
-      setProduct((prev) =>
-        prev ? { ...prev, printZones: [...prev.printZones, result.data] } : prev
-      );
-    }
-  }
-
-  // A4 – zone updated
-  async function handleZoneUpdated(zone: PrintZone) {
-    if (!product) return;
-    const result = await updateZone(product.id, zone.id, zone);
-    if (result.success) {
-      setProduct((prev) =>
-        prev
-          ? {
-              ...prev,
-              printZones: prev.printZones.map((z) =>
-                z.id === zone.id ? result.data : z
-              ),
-            }
-          : prev
-      );
-    }
-  }
-
-  // A4 – zone deleted
-  async function handleZoneDeleted(zoneId: string) {
-    if (!product) return;
-    await deleteZone(product.id, zoneId);
-    setProduct((prev) =>
-      prev
-        ? {
-            ...prev,
-            printZones: prev.printZones.filter((z) => z.id !== zoneId),
-          }
-        : prev
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin mr-2" />
+        Indlæser…
+      </div>
     );
   }
 
-  if (loading) return <p>Indlæser…</p>;
+  if (!product) {
+    return (
+      <div className="py-24 text-center text-muted-foreground">
+        Produktet blev ikke fundet.
+      </div>
+    );
+  }
 
   return (
-    <main style={{ padding: "2rem" }}>
-      <button onClick={() => navigate("/")}>← Tilbage</button>
-      <h1>{isNew ? "Nyt produkt" : "Rediger produkt"}</h1>
+    <div className="space-y-6 max-w-4xl">
+      {/* Back + heading */}
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="sm" onClick={() => navigate("/")}>
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Tilbage
+        </Button>
+        <h1 className="text-2xl font-semibold">{product.title}</h1>
+        <Badge variant="secondary">Midocean</Badge>
+      </div>
 
-      {/* A1 – product metadata */}
-      <section style={{ marginBottom: "1rem" }}>
-        <label>
-          Titel
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onBlur={handleTitleSave}
-            style={{ marginLeft: "0.5rem" }}
-          />
-        </label>
+      {/* Product image */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Produktbillede</CardTitle>
+          <CardDescription>
+            Billede fra første print-position. Dimensioner antages til 1000×1000 px.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="w-48 h-48 border rounded-lg overflow-hidden bg-muted">
+            <img
+              src={product.imageUrl}
+              alt={product.title}
+              className="w-full h-full object-contain"
+            />
+          </div>
+        </CardContent>
+      </Card>
 
-        <label style={{ display: "block", marginTop: "0.5rem" }}>
-          Produktbillede (PNG/JPG)
-          <input
-            type="file"
-            accept="image/png,image/jpeg"
-            onChange={handleImageUpload}
-            style={{ marginLeft: "0.5rem" }}
-          />
-        </label>
-      </section>
-
-      {/* A2-A4 – print zone canvas editor */}
-      {product && (
-        <ZoneEditor
-          product={product}
-          onZoneCreated={handleZoneCreated}
-          onZoneUpdated={handleZoneUpdated}
-          onZoneDeleted={handleZoneDeleted}
-        />
-      )}
-    </main>
+      {/* Print zones */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Print-zoner ({product.printZones.length})</CardTitle>
+          <CardDescription>
+            Zoner importeret fra Midocean leverandørdata.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/40">
+                <th className="text-left px-6 py-3 font-medium text-muted-foreground">Navn</th>
+                <th className="text-left px-6 py-3 font-medium text-muted-foreground">Position (px)</th>
+                <th className="text-left px-6 py-3 font-medium text-muted-foreground">Maks. størrelse</th>
+                <th className="text-left px-6 py-3 font-medium text-muted-foreground">Teknikker</th>
+              </tr>
+            </thead>
+            <tbody>
+              {product.printZones.map((z, i) => (
+                <tr
+                  key={z.id}
+                  className={`border-b last:border-0 ${i % 2 === 0 ? "" : "bg-muted/10"}`}
+                >
+                  <td className="px-6 py-3 font-medium">{z.name}</td>
+                  <td className="px-6 py-3 text-muted-foreground font-mono text-xs">
+                    {z.x},{z.y} — {z.width}×{z.height}
+                  </td>
+                  <td className="px-6 py-3 text-muted-foreground">
+                    {z.maxPhysicalWidthMm}×{z.maxPhysicalHeightMm} mm
+                  </td>
+                  <td className="px-6 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {z.allowedTechniques.map((t) => (
+                        <Badge key={t} variant="outline" className="text-xs">
+                          {t}
+                        </Badge>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

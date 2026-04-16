@@ -15,6 +15,25 @@ frontend/
 └── packages/shared/ # Domain types only – Product, PrintZone, PrintTechnique
 ```
 
+## Data source
+
+No database is required. All product data comes from the backend's Midocean JSON endpoints:
+- `GET /api/midocean-products/as-products` — list of all products
+- `GET /api/midocean-products/{id}/as-product` — single product
+
+Use `getMidoceanProducts()` and `getMidoceanProduct(id)` from each app's `api/` module.
+
+## Design system
+
+Both apps use the **b2b design system**. Key Tailwind tokens:
+- `primary`: `#ff6633` (brand orange)
+- `foreground`: `#262626`
+- `border`: `#e8e8e8`
+- `border-radius`: `0.5rem`
+- Font: **Inter**
+
+UI components live in `src/components/ui/` (Button, Card, Input, Badge, Label). Use CVA variants. Use `cn()` from `src/lib/utils.ts` for class merging — never string templates.
+
 ## Rules Copilot must follow
 
 - **Language**: UI strings in Danish. All code, identifiers, and comments in English.
@@ -22,6 +41,7 @@ frontend/
 - **Exports**: Named exports only – no default exports.
 - **Components**: One component per folder: `src/components/<Name>/<Name>.tsx`.
 - **API layer**: HTTP calls live in `src/api/*.ts` only. Components must not call `axios` directly.
+- **Styling**: Use Tailwind utility classes. Use `cn()` for conditional merging. Do not use inline styles or CSS modules.
 - **Canvas**: Use `react-konva` and `konva` for all canvas / drag / transform needs.
 - **State**: React hooks only. No class components. No external state library unless explicitly requested.
 - **Routing**: `react-router-dom` v6 in Admin. Viewer has no router.

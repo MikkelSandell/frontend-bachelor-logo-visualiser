@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { PrintTechnique, PrintZone } from "@logo-visualizer/shared";
+import { cn } from "../../lib/utils";
 
 const TECHNIQUE_LABELS: Record<PrintTechnique, string> = {
   screen_print: "Silketryk",
@@ -20,20 +21,24 @@ export function TechniqueSelector({ zone }: Props) {
   );
 
   return (
-    <div>
-      <label>
-        Print-teknik:&nbsp;
-        <select
-          value={selected}
-          onChange={(e) => setSelected(e.target.value as PrintTechnique)}
-        >
-          {zone.allowedTechniques.map((t) => (
-            <option key={t} value={t}>
-              {TECHNIQUE_LABELS[t]}
-            </option>
-          ))}
-        </select>
-      </label>
+    <div className="space-y-1.5">
+      <p className="text-sm font-medium">Print-teknik</p>
+      <div className="flex flex-wrap gap-2">
+        {zone.allowedTechniques.map((t) => (
+          <button
+            key={t}
+            onClick={() => setSelected(t)}
+            className={cn(
+              "px-3 py-1.5 rounded-md text-sm border transition-colors",
+              selected === t
+                ? "bg-primary text-primary-foreground border-primary font-medium"
+                : "bg-background text-foreground border-input hover:bg-muted"
+            )}
+          >
+            {TECHNIQUE_LABELS[t]}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

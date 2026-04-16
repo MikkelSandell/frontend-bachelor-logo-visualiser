@@ -1,5 +1,8 @@
 import { useState } from "react";
 import type { PrintTechnique, PrintZone } from "@logo-visualizer/shared";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 
 const ALL_TECHNIQUES: PrintTechnique[] = [
   "screen_print",
@@ -35,9 +38,7 @@ export function ZoneForm({ initial, onSubmit, onCancel }: Props) {
   const [name, setName] = useState(initial.name);
   const [maxW, setMaxW] = useState(initial.maxPhysicalWidthMm);
   const [maxH, setMaxH] = useState(initial.maxPhysicalHeightMm);
-  const [techniques, setTechniques] = useState<PrintTechnique[]>(
-    initial.allowedTechniques
-  );
+  const [techniques, setTechniques] = useState<PrintTechnique[]>(initial.allowedTechniques);
   const [maxColors, setMaxColors] = useState(initial.maxColors);
 
   function toggleTechnique(t: PrintTechnique) {
@@ -48,89 +49,87 @@ export function ZoneForm({ initial, onSubmit, onCancel }: Props) {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    onSubmit({
-      name,
-      maxPhysicalWidthMm: maxW,
-      maxPhysicalHeightMm: maxH,
-      allowedTechniques: techniques,
-      maxColors,
-    });
+    onSubmit({ name, maxPhysicalWidthMm: maxW, maxPhysicalHeightMm: maxH, allowedTechniques: techniques, maxColors });
   }
 
   return (
     <form
       onSubmit={handleSubmit}
-      style={{
-        marginTop: "1rem",
-        padding: "1rem",
-        border: "1px solid #ccc",
-        maxWidth: 400,
-      }}
+      className="mt-4 p-5 border rounded-lg bg-card shadow-sm space-y-4 max-w-sm"
     >
-      <h3>Ny printzone</h3>
+      <h3 className="font-semibold text-base">Konfigurer zone</h3>
 
-      <label>
-        Navn (f.eks. "Forside")
-        <input
+      <div className="space-y-1.5">
+        <Label htmlFor="zone-name">Navn (f.eks. "Forside")</Label>
+        <Input
+          id="zone-name"
           required
           value={name}
           onChange={(e) => setName(e.target.value)}
-          style={{ display: "block", width: "100%", marginTop: "0.25rem" }}
+          placeholder="Zonenavnet"
         />
-      </label>
+      </div>
 
-      <label style={{ display: "block", marginTop: "0.75rem" }}>
-        Maks. bredde (mm)
-        <input
-          type="number"
-          min={1}
-          value={maxW}
-          onChange={(e) => setMaxW(Number(e.target.value))}
-          style={{ display: "block", width: "100%", marginTop: "0.25rem" }}
-        />
-      </label>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="zone-maxw">Maks. bredde (mm)</Label>
+          <Input
+            id="zone-maxw"
+            type="number"
+            min={1}
+            value={maxW}
+            onChange={(e) => setMaxW(Number(e.target.value))}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="zone-maxh">Maks. højde (mm)</Label>
+          <Input
+            id="zone-maxh"
+            type="number"
+            min={1}
+            value={maxH}
+            onChange={(e) => setMaxH(Number(e.target.value))}
+          />
+        </div>
+      </div>
 
-      <label style={{ display: "block", marginTop: "0.75rem" }}>
-        Maks. højde (mm)
-        <input
-          type="number"
-          min={1}
-          value={maxH}
-          onChange={(e) => setMaxH(Number(e.target.value))}
-          style={{ display: "block", width: "100%", marginTop: "0.25rem" }}
-        />
-      </label>
+      <div className="space-y-2">
+        <Label>Tilladte print-teknikker</Label>
+        <div className="grid grid-cols-2 gap-1.5">
+          {ALL_TECHNIQUES.map((t) => (
+            <label
+              key={t}
+              className="flex items-center gap-2 text-sm cursor-pointer select-none"
+            >
+              <input
+                type="checkbox"
+                checked={techniques.includes(t)}
+                onChange={() => toggleTechnique(t)}
+                className="accent-primary h-4 w-4 rounded"
+              />
+              {TECHNIQUE_LABELS[t]}
+            </label>
+          ))}
+        </div>
+      </div>
 
-      <fieldset style={{ marginTop: "0.75rem" }}>
-        <legend>Tilladte print-teknikker</legend>
-        {ALL_TECHNIQUES.map((t) => (
-          <label key={t} style={{ display: "block" }}>
-            <input
-              type="checkbox"
-              checked={techniques.includes(t)}
-              onChange={() => toggleTechnique(t)}
-            />{" "}
-            {TECHNIQUE_LABELS[t]}
-          </label>
-        ))}
-      </fieldset>
-
-      <label style={{ display: "block", marginTop: "0.75rem" }}>
-        Maks. antal farver (0 = ubegrænset)
-        <input
+      <div className="space-y-1.5">
+        <Label htmlFor="zone-colors">Maks. antal farver (0 = ubegrænset)</Label>
+        <Input
+          id="zone-colors"
           type="number"
           min={0}
           value={maxColors}
           onChange={(e) => setMaxColors(Number(e.target.value))}
-          style={{ display: "block", width: "100%", marginTop: "0.25rem" }}
+          className="max-w-[120px]"
         />
-      </label>
+      </div>
 
-      <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem" }}>
-        <button type="submit">Gem zone</button>
-        <button type="button" onClick={onCancel}>
+      <div className="flex gap-2 pt-1">
+        <Button type="submit" size="sm">Gem zone</Button>
+        <Button type="button" variant="outline" size="sm" onClick={onCancel}>
           Annuller
-        </button>
+        </Button>
       </div>
     </form>
   );
