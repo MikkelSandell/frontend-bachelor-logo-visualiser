@@ -19,6 +19,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
 
   const [product, setProduct] = useState<Product | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | undefined>(preloadedLogo);
+  const [logoId, setLogoId] = useState<string | null>(null);
   const [activeZoneId, setActiveZoneId] = useState<string | null>(null);
 
   const activeZone = product?.printZones.find((z) => z.id === activeZoneId) ?? null;
@@ -108,7 +109,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
             </button>
 
             {/* V1 – logo upload */}
-            <LogoUploader preloadedUrl={preloadedLogo} onLogoReady={setLogoUrl} />
+            <LogoUploader preloadedUrl={preloadedLogo} onLogoReady={(url, id) => { setLogoUrl(url); setLogoId(id); }} />
 
             {/* V3 – zone selector */}
             {product.printZones.length > 1 && (
@@ -123,6 +124,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
             <ProductCanvas
               product={product}
               logoUrl={logoUrl}
+              logoId={logoId}
               activeZoneId={activeZoneId}
               onProductLoaded={(p) => {
                 if (!activeZoneId && p.printZones.length > 0) {
