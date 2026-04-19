@@ -3,8 +3,9 @@ import { Stage, Layer, Image as KonvaImage, Rect, Group } from "react-konva";
 import Konva from "konva";
 import useImage from "use-image";
 import type { Product, PrintZone } from "@logo-visualizer/shared";
+import { requestExportPng } from "../../api/viewerApi";
 import { Button } from "../ui/button";
-import { Download } from "lucide-react";
+import { Download, Loader2 } from "lucide-react";
 
 const MAX_WIDTH = 700;
 
@@ -18,14 +19,16 @@ interface LogoState {
 interface Props {
   product: Product;
   logoUrl?: string;
+  logoId: string | null;
   activeZoneId: string | null;
   onProductLoaded: (product: Product) => void;
 }
 
-export function ProductCanvas({ product, logoUrl, activeZoneId, onProductLoaded }: Props) {
+export function ProductCanvas({ product, logoUrl, logoId, activeZoneId, onProductLoaded }: Props) {
   const [productImage] = useImage(product.imageUrl);
   const [logoImage] = useImage(logoUrl ?? "");
   const [logoState, setLogoState] = useState<LogoState | null>(null);
+  const [exporting, setExporting] = useState(false);
   const stageRef = useRef<Konva.Stage>(null);
 
   // Notify parent when product is available
@@ -64,14 +67,38 @@ export function ProductCanvas({ product, logoUrl, activeZoneId, onProductLoaded 
     };
   }
 
-  // V8 – export canvas as PNG (client-side via Konva)
-  function handleExportPng() {
-    if (!stageRef.current) return;
-    const uri = stageRef.current.toDataURL({ mimeType: "image/png" });
-    const a = document.createElement("a");
-    a.href = uri;
-    a.download = "logo-visualisering.png";
-    a.click();
+  // V8 – eksporter PNG via backend
+  async function handleExportPng() {
+    if (!logoState || !activeZone || !logoId) {
+      alert("Vælg en zone, upload et logo, og vent til det er uploadet.");
+      return;
+    }
+    setExporting(true);
+    try {
+      const blob = await requestExportPng({
+        productId: product.id,
+        zoneId: activeZone.id,
+        logoId: logoId, // Brug faktiske logoId, ikke logoUrl!
+        logoX: Math.round(logoState.x / scale),
+        logoY: Math.round(logoState.y / scale),
+        logoWidth: Math.round(logoState.width / scale),
+        logoHeight: Math.round(logoState.height / scale),
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "logo-visualisering.png";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("PNG eksport fejl:", error);
+      alert("Kunne ikke eksportere PNG fra backend.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   return (
@@ -124,10 +151,10 @@ export function ProductCanvas({ product, logoUrl, activeZoneId, onProductLoaded 
         </Stage>
       </div>
 
-      {/* V8 – PNG export */}
-      <Button variant="outline" size="sm" onClick={handleExportPng}>
-        <Download className="h-4 w-4 mr-2" />
-        Download som PNG
+      {/* V8 – PNG eksport */}
+      <Button variant="outline" size="sm" onClick={handleExportPng} disabled={exporting}>
+        {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+        {exporting ? "Eksporterer…" : "Download som PNG"}
       </Button>
     </div>
   );

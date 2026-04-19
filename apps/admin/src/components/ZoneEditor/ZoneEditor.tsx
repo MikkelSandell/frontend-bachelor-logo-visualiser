@@ -8,6 +8,7 @@ import { Trash2 } from "lucide-react";
 
 interface Props {
   product: Product;
+  zones: PrintZone[];
   onZoneCreated: (zone: Omit<PrintZone, "id">) => void;
   onZoneUpdated: (zone: PrintZone) => void;
   onZoneDeleted: (zoneId: string) => void;
@@ -16,16 +17,31 @@ interface Props {
 // Scale canvas to max 800px wide while preserving aspect ratio
 const MAX_WIDTH = 800;
 
+// Determine if a zone is for back/arms (simple heuristic based on name)
+function isBackZone(zoneName: string): boolean {
+  const lowerName = zoneName.toLowerCase();
+  return lowerName.includes("back") || lowerName.includes("arm");
+}
+
 export function ZoneEditor({
   product,
+  zones,
   onZoneCreated,
   onZoneUpdated,
   onZoneDeleted,
 }: Props) {
   const [productImage] = useImage(product.imageUrl);
+  const [view, setView] = useState<"front" | "back">("front");
+
   const scale = Math.min(1, MAX_WIDTH / product.imageWidth);
   const canvasWidth = product.imageWidth * scale;
   const canvasHeight = product.imageHeight * scale;
+
+  // Filter zones based on current view
+  const visibleZones = zones.filter((z) => {
+    const isBack = isBackZone(z.name);
+    return view === "front" ? !isBack : isBack;
+  });
 
   // Pending rectangle being drawn
   const [drawing, setDrawing] = useState<{
@@ -106,6 +122,24 @@ export function ZoneEditor({
         Tegn en zone ved at klikke og trække på billedet. Dobbeltklik på en eksisterende zone for at redigere den.
       </p>
 
+      {/* View toggle */}
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant={view === "front" ? "default" : "outline"}
+          onClick={() => setView("front")}
+        >
+          Forside
+        </Button>
+        <Button
+          size="sm"
+          variant={view === "back" ? "default" : "outline"}
+          onClick={() => setView("back")}
+        >
+          Bagside
+        </Button>
+      </div>
+
       <div className="overflow-auto">
         <Stage
           width={canvasWidth}
@@ -125,8 +159,8 @@ export function ZoneEditor({
               />
             )}
 
-            {/* Existing zones (A4 – click to select; double-click to edit) */}
-            {product.printZones.map((zone) => (
+            {/* Visible zones based on view (front or back) */}
+            {visibleZones.map((zone) => (
               <Rect
                 key={zone.id}
                 x={zone.x * scale}
@@ -200,7 +234,7 @@ export function ZoneEditor({
             variant="outline"
             size="sm"
             onClick={() => {
-              const zone = product.printZones.find((z) => z.id === selectedZoneId);
+              const zone = zones.find((z) => z.id === selectedZoneId);
               if (zone) setEditingZone(zone);
             }}
           >

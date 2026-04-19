@@ -1,26 +1,128 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2 } from "lucide-react";
-import type { Product } from "@logo-visualizer/shared";
-import { getMidoceanProduct } from "../api/productApi";
+import { ArrowLeft, Loader2, AlertCircle, Check } from "lucide-react";
+import type { Product, PrintZone } from "@logo-visualizer/shared";
+import { getMidoceanProduct, updateProduct } from "../api/productApi";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
+import { ZoneEditor } from "../components/ZoneEditor/ZoneEditor";
 
 export function ProductEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const saveTimeoutRef = useRef<NodeJS.Timeout>();
 
+  // State
   const [product, setProduct] = useState<Product | null>(null);
+  const [zones, setZones] = useState<PrintZone[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<string[]>([]);
+  const [success, setSuccess] = useState(false);
 
+  // Load product on mount
   useEffect(() => {
     if (!id) return;
+
+    // Reset state when ID changes
+    setProduct(null);
+    setZones([]);
+    setLoading(true);
+    setErrors([]);
+    setSuccess(false);
+
     getMidoceanProduct(id)
-      .then(setProduct)
+      .then((p) => {
+        // Sync both product and zones from response
+        setProduct(p);
+        setZones([...p.printZones]); // Immutable copy
+        setErrors([]);
+        setSuccess(false);
+      })
+      .catch((err) => {
+        console.error("Failed to load product:", err);
+        setProduct(null);
+        setZones([]);
+        setErrors(["Produktet blev ikke fundet."]);
+      })
       .finally(() => setLoading(false));
   }, [id]);
 
+  // Clear success message after delay
+  useEffect(() => {
+    if (!success) return;
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => setSuccess(false), 3000);
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, [success]);
+
+  async function handleSave() {
+    // Prevent double-click submissions
+    if (saving || !product) return;
+
+    setSaving(true);
+    setErrors([]); // Clear previous errors
+    setSuccess(false);
+
+    try {
+      // Send full product with updated zones
+      const payload: Product = {
+        id: product.id,
+        title: product.title,
+        imageUrl: product.imageUrl,
+        imageWidth: product.imageWidth,
+        imageHeight: product.imageHeight,
+        printZones: zones,
+      };
+
+      const response = await updateProduct(product.id, payload);
+
+      // Treat backend response as source of truth
+      if (response.data) {
+        setProduct(response.data);
+        setZones([...response.data.printZones]); // Immutable copy
+        setErrors([]);
+        setSuccess(true);
+      }
+    } catch (err: unknown) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const axiosError = err as any;
+      const errorMessages = axiosError?.response?.data?.errors;
+
+      if (Array.isArray(errorMessages) && errorMessages.length > 0) {
+        setErrors(errorMessages);
+      } else {
+        setErrors(["Der opstod en fejl ved gemming. Prøv igen."]);
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Immutable zone handlers
+  function handleZoneCreated(zone: Omit<PrintZone, "id">) {
+    // Generate stable ID for new zones
+    const newZone: PrintZone = {
+      ...zone,
+      id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    };
+    setZones((prev) => [...prev, newZone]);
+  }
+
+  function handleZoneUpdated(zone: PrintZone) {
+    setZones((prev) =>
+      prev.map((z) => (z.id === zone.id ? { ...zone } : z))
+    );
+  }
+
+  function handleZoneDeleted(zoneId: string) {
+    setZones((prev) => prev.filter((z) => z.id !== zoneId));
+  }
+
+  // Loading state
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24 text-muted-foreground">
@@ -30,6 +132,7 @@ export function ProductEditorPage() {
     );
   }
 
+  // Not found state
   if (!product) {
     return (
       <div className="py-24 text-center text-muted-foreground">
@@ -39,7 +142,7 @@ export function ProductEditorPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-4xl pb-32">
       {/* Back + heading */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" onClick={() => navigate("/")}>
@@ -50,71 +153,125 @@ export function ProductEditorPage() {
         <Badge variant="secondary">Midocean</Badge>
       </div>
 
-      {/* Product image */}
+      {/* Success message */}
+      {success && (
+        <Card className="border-green-200 bg-green-50">
+          <CardContent className="pt-6">
+            <div className="flex gap-3">
+              <Check className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-green-900">Ændringer gemt</h3>
+                <p className="text-sm text-green-800">Produktet er blevet opdateret.</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Error messages */}
+      {errors.length > 0 && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="pt-6">
+            <div className="flex gap-3">
+              <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-red-900 mb-2">Fejl ved gemning</h3>
+                <ul className="space-y-1 text-sm text-red-800">
+                  {errors.map((err, i) => (
+                    <li key={i}>• {err}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Zone Editor */}
       <Card>
         <CardHeader>
-          <CardTitle>Produktbillede</CardTitle>
+          <CardTitle>Rediger print-zoner</CardTitle>
           <CardDescription>
-            Billede fra første print-position. Dimensioner antages til 1000×1000 px.
+            Tegn og rediger zoner direkte på produktbilledet.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="w-48 h-48 border rounded-lg overflow-hidden bg-muted">
-            <img
-              src={product.imageUrl}
-              alt={product.title}
-              className="w-full h-full object-contain"
-            />
-          </div>
+          <ZoneEditor
+            product={product}
+            zones={zones}
+            onZoneCreated={handleZoneCreated}
+            onZoneUpdated={handleZoneUpdated}
+            onZoneDeleted={handleZoneDeleted}
+          />
         </CardContent>
       </Card>
 
-      {/* Print zones */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Print-zoner ({product.printZones.length})</CardTitle>
-          <CardDescription>
-            Zoner importeret fra Midocean leverandørdata.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/40">
-                <th className="text-left px-6 py-3 font-medium text-muted-foreground">Navn</th>
-                <th className="text-left px-6 py-3 font-medium text-muted-foreground">Position (px)</th>
-                <th className="text-left px-6 py-3 font-medium text-muted-foreground">Maks. størrelse</th>
-                <th className="text-left px-6 py-3 font-medium text-muted-foreground">Teknikker</th>
-              </tr>
-            </thead>
-            <tbody>
-              {product.printZones.map((z, i) => (
-                <tr
-                  key={z.id}
-                  className={`border-b last:border-0 ${i % 2 === 0 ? "" : "bg-muted/10"}`}
-                >
-                  <td className="px-6 py-3 font-medium">{z.name}</td>
-                  <td className="px-6 py-3 text-muted-foreground font-mono text-xs">
-                    {z.x},{z.y} — {z.width}×{z.height}
-                  </td>
-                  <td className="px-6 py-3 text-muted-foreground">
-                    {z.maxPhysicalWidthMm}×{z.maxPhysicalHeightMm} mm
-                  </td>
-                  <td className="px-6 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {z.allowedTechniques.map((t) => (
-                        <Badge key={t} variant="outline" className="text-xs">
-                          {t}
-                        </Badge>
-                      ))}
-                    </div>
-                  </td>
+      {/* Zone List */}
+      {zones.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Print-zoner ({zones.length})</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/40">
+                  <th className="text-left px-6 py-3 font-medium text-muted-foreground">Navn</th>
+                  <th className="text-left px-6 py-3 font-medium text-muted-foreground">Position (px)</th>
+                  <th className="text-left px-6 py-3 font-medium text-muted-foreground">Maks. størrelse</th>
+                  <th className="text-left px-6 py-3 font-medium text-muted-foreground">Teknikker</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
+              </thead>
+              <tbody>
+                {zones.map((z, i) => (
+                  <tr
+                    key={z.id}
+                    className={`border-b last:border-0 ${i % 2 === 0 ? "" : "bg-muted/10"}`}
+                  >
+                    <td className="px-6 py-3 font-medium">{z.name}</td>
+                    <td className="px-6 py-3 text-muted-foreground font-mono text-xs">
+                      {z.x},{z.y} — {z.width}×{z.height}
+                    </td>
+                    <td className="px-6 py-3 text-muted-foreground">
+                      {z.maxPhysicalWidthMm}×{z.maxPhysicalHeightMm} mm
+                    </td>
+                    <td className="px-6 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {z.allowedTechniques.map((t) => (
+                          <Badge key={t} variant="outline" className="text-xs">
+                            {t}
+                          </Badge>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Save button – sticky at bottom */}
+      <div className="fixed bottom-0 left-0 right-0 border-t border-border bg-background px-6 py-4">
+        <div className="max-w-4xl mx-auto flex gap-2">
+          <Button
+            onClick={handleSave}
+            disabled={saving || !product}
+            className="gap-2"
+          >
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+            {saving ? "Gemmer…" : "Gem ændringer"}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => navigate("/")}
+            disabled={saving}
+          >
+            Annuller
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

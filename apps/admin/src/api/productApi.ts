@@ -2,7 +2,7 @@ import axios from "axios";
 import type { Product, PrintZone } from "@logo-visualizer/shared";
 
 const client = axios.create({
-  baseURL: "/api",
+  baseURL: "http://localhost:5000/api",
   headers: { "Content-Type": "application/json" },
 });
 

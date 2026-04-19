@@ -1,7 +1,7 @@
 import axios from "axios";
 import type { ApiResponse, LogoUploadResponse, Product } from "@logo-visualizer/shared";
 
-const client = axios.create({ baseURL: "/api" });
+const client = axios.create({ baseURL: "http://localhost:5000/api" });
 
 // ─── Products (Midocean JSON data — no DB required) ──────────────────────────
 
@@ -21,7 +21,7 @@ export const uploadLogo = (file: File) => {
   const form = new FormData();
   form.append("file", file);
   return client
-    .post<ApiResponse<LogoUploadResponse>>("/logos", form, {
+    .post<ApiResponse<LogoUploadResponse>>("/logos/upload", form, {
       headers: { "Content-Type": "multipart/form-data" },
     })
     .then((r) => r.data);
@@ -32,11 +32,11 @@ export const uploadLogo = (file: File) => {
 export const requestExportPng = (payload: {
   productId: string;
   zoneId: string;
-  logoFileId: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+  logoId: string;
+  logoX: number;
+  logoY: number;
+  logoWidth: number;
+  logoHeight: number;
 }) =>
   client
     .post("/export/png", payload, { responseType: "blob" })
