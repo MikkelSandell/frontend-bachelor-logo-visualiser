@@ -26,10 +26,13 @@ interface Props {
 
 export function ProductCanvas({ product, logoUrl, logoId, activeZoneId, onProductLoaded }: Props) {
   const activeZone_forImg = product.printZones.find((z) => z.id === activeZoneId);
-  const zoneImageUrl = /^(front|back)/i.test(activeZone_forImg?.id ?? "")
-    ? activeZone_forImg?.imageUrl
-    : undefined;
-  const [productImage] = useImage(zoneImageUrl || product.imageUrl);
+  // ARM zones have heavily-cropped sleeve images — show the main product image instead.
+  const isArmZone  = /\barm\b/i.test(activeZone_forImg?.id ?? "");
+  // RIGHT ARM coordinates are mirrored when drawn on the front-facing product image.
+  const isRightArm = /right/i.test(activeZone_forImg?.id ?? "");
+  const [productImage] = useImage(
+    isArmZone ? product.imageUrl : (activeZone_forImg?.imageUrl || product.imageUrl)
+  );
   const [logoImage] = useImage(logoUrl ?? "");
   const [logoState, setLogoState] = useState<LogoState | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -48,26 +51,35 @@ export function ProductCanvas({ product, logoUrl, logoId, activeZoneId, onProduc
   const canvasWidth  = product.imageWidth  * scale;
   const canvasHeight = product.imageHeight * scale;
 
+  // When an ARM zone is shown on the main front image, mirror x for RIGHT ARM so it
+  // appears on the correct side (Midocean arm coords are relative to a sleeve close-up).
+  function displayX(zone: PrintZone): number {
+    return isRightArm ? product.imageWidth - zone.x - zone.width : zone.x;
+  }
+
   // V2 – place logo centrally in zone when zone or logo changes
   useEffect(() => {
     if (!activeZone || !logoImage) return;
+    const zoneDispX = displayX(activeZone);
     const zoneW = activeZone.width  * scale;
     const zoneH = activeZone.height * scale;
     const logoW = Math.min(logoImage.width, zoneW * 0.5);
     const logoH = (logoImage.height / logoImage.width) * logoW;
     setLogoState({
-      x: activeZone.x * scale + zoneW / 2 - logoW / 2,
+      x: zoneDispX * scale + zoneW / 2 - logoW / 2,
       y: activeZone.y * scale + zoneH / 2 - logoH / 2,
       width: logoW,
       height: logoH,
     });
-  }, [activeZone, logoImage, scale]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeZone, logoImage, scale, isRightArm]);
 
   // V6 – clamp logo position inside zone boundaries
   function clampToZone(lx: number, ly: number, lw: number, lh: number, zone: PrintZone) {
+    const zoneDispX = displayX(zone);
     return {
-      x: Math.max(zone.x * scale, Math.min(lx, (zone.x + zone.width)  * scale - lw)),
-      y: Math.max(zone.y * scale, Math.min(ly, (zone.y + zone.height) * scale - lh)),
+      x: Math.max(zoneDispX * scale, Math.min(lx, (zoneDispX + zone.width)  * scale - lw)),
+      y: Math.max(zone.y    * scale, Math.min(ly, (zone.y     + zone.height) * scale - lh)),
     };
   }
 
@@ -123,7 +135,7 @@ export function ProductCanvas({ product, logoUrl, logoId, activeZoneId, onProduc
             {/* Active print zone indicator */}
             {activeZone && (
               <Rect
-                x={activeZone.x * scale}
+                x={displayX(activeZone) * scale}
                 y={activeZone.y * scale}
                 width={activeZone.width * scale}
                 height={activeZone.height * scale}

@@ -17,10 +17,29 @@ interface Props {
 // Scale canvas to max 800px wide while preserving aspect ratio
 const MAX_WIDTH = 800;
 
-// Determine if a zone is for back/arms (simple heuristic based on name)
+// Determine if a zone belongs to the back view (name contains "back")
+// ARM zones are shown on the front view since the sleeves are visible in the front photo
 function isBackZone(zoneName: string): boolean {
-  const lowerName = zoneName.toLowerCase();
-  return lowerName.includes("back") || lowerName.includes("arm");
+  return zoneName.toLowerCase().includes("back");
+}
+
+// Pick the canvas background image for the current view.
+// Each Midocean zone has its own position-specific image; we use the "primary"
+// zone's image (FRONT or BACK) so coordinates align with the correct photo.
+function getViewImageUrl(zones: PrintZone[], view: "front" | "back", fallback: string): string {
+  if (view === "front") {
+    return (
+      zones.find((z) => z.name.toUpperCase() === "FRONT")?.imageUrl ||
+      zones.find((z) => !isBackZone(z.name))?.imageUrl ||
+      fallback
+    );
+  }
+  return (
+    zones.find((z) => z.name.toUpperCase() === "BACK")?.imageUrl ||
+    zones.find((z) => isBackZone(z.name) && !z.name.toLowerCase().includes("arm"))?.imageUrl ||
+    zones.find((z) => isBackZone(z.name))?.imageUrl ||
+    fallback
+  );
 }
 
 export function ZoneEditor({
@@ -30,18 +49,21 @@ export function ZoneEditor({
   onZoneUpdated,
   onZoneDeleted,
 }: Props) {
-  const [productImage] = useImage(product.imageUrl);
   const [view, setView] = useState<"front" | "back">("front");
+
+  // Use the position-specific image for the current view so zone coordinates
+  // are drawn on the correct background (FRONT coords on FRONT image, etc.)
+  const viewImageUrl = getViewImageUrl(zones, view, product.imageUrl);
+  const [productImage] = useImage(viewImageUrl);
 
   const scale = Math.min(1, MAX_WIDTH / product.imageWidth);
   const canvasWidth = product.imageWidth * scale;
   const canvasHeight = product.imageHeight * scale;
 
   // Filter zones based on current view
-  const visibleZones = zones.filter((z) => {
-    const isBack = isBackZone(z.name);
-    return view === "front" ? !isBack : isBack;
-  });
+  const visibleZones = zones.filter((z) =>
+    view === "front" ? !isBackZone(z.name) : isBackZone(z.name)
+  );
 
   // Pending rectangle being drawn
   const [drawing, setDrawing] = useState<{
@@ -99,6 +121,7 @@ export function ZoneEditor({
       maxPhysicalHeightMm: 0,
       allowedTechniques: [],
       maxColors: 0,
+      imageUrl: viewImageUrl,
     });
     setDrawing(null);
     drawStart.current = null;
@@ -160,10 +183,16 @@ export function ZoneEditor({
             )}
 
             {/* Visible zones based on view (front or back) */}
-            {visibleZones.map((zone) => (
+            {visibleZones.map((zone) => {
+              // ARM RIGHT coordinates reference an arm close-up image where the arm
+              // is on the left — mirror horizontally so it renders on the right sleeve.
+              const zoneX = zone.name.toUpperCase() === "ARM RIGHT"
+                ? (product.imageWidth - zone.x - zone.width) * scale
+                : zone.x * scale;
+              return (
               <Rect
                 key={zone.id}
-                x={zone.x * scale}
+                x={zoneX}
                 y={zone.y * scale}
                 width={zone.width * scale}
                 height={zone.height * scale}
@@ -176,7 +205,8 @@ export function ZoneEditor({
                   setEditingZone(zone);
                 }}
               />
-            ))}
+              );
+            })}
 
             {/* In-progress drawing */}
             {drawing && (

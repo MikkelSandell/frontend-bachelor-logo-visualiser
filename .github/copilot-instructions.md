@@ -37,7 +37,7 @@ UI components live in `src/components/ui/` (Button, Card, Input, Badge, Label). 
 ## Rules Copilot must follow
 
 - **Language**: UI strings in Danish. All code, identifiers, and comments in English.
-- **Types**: All domain types come from `@logo-visualizer/shared`. Never redefine `Product`, `PrintZone`, or `PrintTechnique` locally.
+- **Types**: All domain types come from `@logo-visualizer/shared`. Never redefine `Product`, `PrintZone`, or `PrintTechnique` locally. `PrintZone` includes an `imageUrl` field — the blank product photo for that specific print position (same colour across all zones).
 - **Exports**: Named exports only – no default exports.
 - **Components**: One component per folder: `src/components/<Name>/<Name>.tsx`.
 - **API layer**: HTTP calls live in `src/api/*.ts` only. Components must not call `axios` directly.
