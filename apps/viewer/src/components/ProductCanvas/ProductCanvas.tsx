@@ -25,7 +25,11 @@ interface Props {
 }
 
 export function ProductCanvas({ product, logoUrl, logoId, activeZoneId, onProductLoaded }: Props) {
-  const [productImage] = useImage(product.imageUrl);
+  const activeZone_forImg = product.printZones.find((z) => z.id === activeZoneId);
+  const zoneImageUrl = /^(front|back)/i.test(activeZone_forImg?.id ?? "")
+    ? activeZone_forImg?.imageUrl
+    : undefined;
+  const [productImage] = useImage(zoneImageUrl || product.imageUrl);
   const [logoImage] = useImage(logoUrl ?? "");
   const [logoState, setLogoState] = useState<LogoState | null>(null);
   const [exporting, setExporting] = useState(false);

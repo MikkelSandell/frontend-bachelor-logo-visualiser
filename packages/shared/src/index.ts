@@ -26,6 +26,8 @@ export interface PrintZone {
   allowedTechniques: PrintTechnique[];
   /** 0 = unlimited */
   maxColors: number;
+  /** Product image URL specific to this print position (e.g. back, chest, arm) */
+  imageUrl: string;
 }
 
 // ─── Product ─────────────────────────────────────────────────────────────────
