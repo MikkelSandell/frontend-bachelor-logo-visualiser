@@ -43,6 +43,8 @@ UI components live in `src/components/ui/` (Button, Card, Input, Badge, Label). 
 - **API layer**: HTTP calls live in `src/api/*.ts` only. Components must not call `axios` directly.
 - **Styling**: Use Tailwind utility classes. Use `cn()` for conditional merging. Do not use inline styles or CSS modules.
 - **Canvas**: Use `react-konva` and `konva` for all canvas / drag / transform needs.
+  - `ZoneEditor` (admin): uses each `PrintZone.imageUrl` as the canvas background for the matching view tab. ARM zones are shown on the front tab; ARM RIGHT x-coordinate is mirrored (`imageWidth - x - width`) so it renders on the correct sleeve side.
+  - `ProductCanvas` (viewer): logo resizing uses a Konva `Transformer` (4 corner anchors, `keepRatio=true`, `rotateEnabled=false`). Zone boundary is enforced in both `dragBoundFunc` and `boundBoxFunc` so the logo can never leave the active print zone.
 - **State**: React hooks only. No class components. No external state library unless explicitly requested.
 - **Routing**: `react-router-dom` v6 in Admin. Viewer has no router.
 - **Strict TS**: `strict: true` is set in every tsconfig. Do not use `any` or non-null assertion (`!`) without a comment explaining why.

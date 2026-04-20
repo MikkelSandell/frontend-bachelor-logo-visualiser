@@ -55,8 +55,8 @@ frontend/
 | `apps/viewer/src/api/viewerApi.ts` | All Viewer → backend API calls — `getMidoceanProducts()`, `getMidoceanProduct()` |
 | `apps/admin/src/lib/utils.ts` | `cn()` — merges Tailwind classes via clsx + tailwind-merge |
 | `apps/viewer/src/lib/utils.ts` | Same `cn()` helper |
-| `apps/admin/src/components/ZoneEditor/` | Konva canvas for drawing rectangular print zones (req A2) |
-| `apps/viewer/src/components/ProductCanvas/` | Konva canvas for logo drag/scale/constrain (req V2–V6) — accepts `product: Product` prop directly |
+| `apps/admin/src/components/ZoneEditor/` | Konva canvas for drawing rectangular print zones (req A2). Uses each zone's `imageUrl` as the canvas background per view — FRONT tab shows the FRONT position image, BACK tab shows the BACK position image. ARM zones display on the front tab; ARM RIGHT x is mirrored so it appears on the correct sleeve side. |
+| `apps/viewer/src/components/ProductCanvas/` | Konva canvas for logo drag/scale/constrain (req V2–V6). Logo uses a Konva `Transformer` for corner-drag resizing (4 corners, aspect-ratio locked, rotation disabled); resize is hard-clamped to zone boundaries via `boundBoxFunc`. |
 | `apps/viewer/src/web-component.ts` | Shadow DOM web component entry point (req V11 / NF1) |
 
 ---

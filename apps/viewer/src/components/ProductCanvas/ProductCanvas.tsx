@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Stage, Layer, Image as KonvaImage, Rect, Group } from "react-konva";
+import { Stage, Layer, Image as KonvaImage, Rect, Transformer } from "react-konva";
 import Konva from "konva";
 import useImage from "use-image";
 import type { Product, PrintZone } from "@logo-visualizer/shared";
@@ -37,6 +37,16 @@ export function ProductCanvas({ product, logoUrl, logoId, activeZoneId, onProduc
   const [logoState, setLogoState] = useState<LogoState | null>(null);
   const [exporting, setExporting] = useState(false);
   const stageRef = useRef<Konva.Stage>(null);
+  const logoRef = useRef<Konva.Image>(null);
+  const transformerRef = useRef<Konva.Transformer>(null);
+
+  // Attach transformer to the logo node whenever the logo is present
+  useEffect(() => {
+    if (logoImage && logoState && transformerRef.current && logoRef.current) {
+      transformerRef.current.nodes([logoRef.current]);
+      transformerRef.current.getLayer()?.batchDraw();
+    }
+  }, [logoImage, logoState]);
 
   // Notify parent when product is available
   useEffect(() => {
@@ -146,22 +156,58 @@ export function ProductCanvas({ product, logoUrl, logoId, activeZoneId, onProduc
               />
             )}
 
-            {/* V4/V5 – draggable, scalable logo constrained to zone */}
+            {/* V4/V5 – draggable, resizable logo constrained to zone */}
             {logoImage && logoState && activeZone && (
-              <Group
-                x={logoState.x}
-                y={logoState.y}
-                draggable
-                dragBoundFunc={(pos) =>
-                  clampToZone(pos.x, pos.y, logoState.width, logoState.height, activeZone)
-                }
-                onDragEnd={(e) => {
-                  const { x, y } = e.target.position();
-                  setLogoState((prev) => (prev ? { ...prev, x, y } : prev));
-                }}
-              >
-                <KonvaImage image={logoImage} width={logoState.width} height={logoState.height} />
-              </Group>
+              <>
+                <KonvaImage
+                  ref={logoRef}
+                  image={logoImage}
+                  x={logoState.x}
+                  y={logoState.y}
+                  width={logoState.width}
+                  height={logoState.height}
+                  draggable
+                  dragBoundFunc={(pos) =>
+                    clampToZone(pos.x, pos.y, logoState.width, logoState.height, activeZone)
+                  }
+                  onDragEnd={(e) => {
+                    const { x, y } = e.target.position();
+                    setLogoState((prev) => (prev ? { ...prev, x, y } : prev));
+                  }}
+                  onTransformEnd={() => {
+                    const node = logoRef.current;
+                    if (!node || !activeZone) return;
+                    const newWidth  = Math.max(20, node.width()  * node.scaleX());
+                    const newHeight = Math.max(20, node.height() * node.scaleY());
+                    node.scaleX(1);
+                    node.scaleY(1);
+                    // Clamp position after resize so logo stays inside zone
+                    const clamped = clampToZone(node.x(), node.y(), newWidth, newHeight, activeZone);
+                    node.position(clamped);
+                    setLogoState({ x: clamped.x, y: clamped.y, width: newWidth, height: newHeight });
+                  }}
+                />
+                <Transformer
+                  ref={transformerRef}
+                  keepRatio={true}
+                  rotateEnabled={false}
+                  enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]}
+                  boundBoxFunc={(oldBox, newBox) => {
+                    if (newBox.width < 20 || newBox.height < 20) return oldBox;
+                    const zoneLeft   = displayX(activeZone) * scale;
+                    const zoneTop    = activeZone.y * scale;
+                    const zoneRight  = (displayX(activeZone) + activeZone.width)  * scale;
+                    const zoneBottom = (activeZone.y         + activeZone.height) * scale;
+                    if (
+                      newBox.x < zoneLeft  ||
+                      newBox.y < zoneTop   ||
+                      newBox.x + newBox.width  > zoneRight  ||
+                      newBox.y + newBox.height > zoneBottom
+                    ) return oldBox;
+                    return newBox;
+                  }}
+                />
+              </>
             )}
           </Layer>
         </Stage>
