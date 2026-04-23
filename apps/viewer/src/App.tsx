@@ -6,7 +6,8 @@ import { ProductCanvas } from "./components/ProductCanvas/ProductCanvas";
 import { ZoneSelector } from "./components/ZoneSelector/ZoneSelector";
 import { TechniqueSelector } from "./components/TechniqueSelector/TechniqueSelector";
 import { Card, CardContent } from "./components/ui/card";
-import { Loader2 } from "lucide-react";
+import { Input } from "./components/ui/input";
+import { Loader2, Search } from "lucide-react";
 import { cn } from "./lib/utils";
 
 interface Props {
@@ -17,6 +18,7 @@ interface Props {
 export function App({ preloadedLogo, preloadedProductId }: Props) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
+  const [search, setSearch] = useState("");
 
   const [product, setProduct] = useState<Product | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | undefined>(preloadedLogo);
@@ -50,19 +52,29 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
     }
   }, [preloadedProductId]);
 
+  /** Maps any zone id to the id of its side zone (FRONT or BACK) for canvas display. */
+  function toSideZoneId(id: string, p: Product): string {
+    const zone = p.printZones.find((z) => z.id === id);
+    if (!zone) return id;
+    if (/back/i.test(zone.name)) {
+      return p.printZones.find((z) => /^back$/i.test(z.name))?.id ?? id;
+    }
+    return p.printZones.find((z) => /^front$/i.test(z.name))?.id ?? id;
+  }
+
   function handleSelectProduct(p: Product) {
     const firstId = p.printZones.length > 0 ? p.printZones[0].id : null;
     setProduct(p);
     setActiveZoneIds(firstId ? [firstId] : []);
     setFocusedZoneId(firstId);
-    setViewedZoneId(firstId);
+    setViewedZoneId(firstId ? toSideZoneId(firstId, p) : null);
   }
 
   /** Activate an inactive zone and focus it */
   function handleZoneToggle(id: string) {
     setActiveZoneIds((prev) => [...prev, id]);
     setFocusedZoneId(id);
-    setViewedZoneId(id);
+    setViewedZoneId(toSideZoneId(id, product!));
   }
 
   /** Remove a zone's logo entirely */
@@ -72,7 +84,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
       const remaining = activeZoneIds.filter((z) => z !== id);
       const next = remaining[0] ?? null;
       setFocusedZoneId(next);
-      if (next) setViewedZoneId(next);
+      if (next) setViewedZoneId(toSideZoneId(next, product!));
     }
   }
 
@@ -95,31 +107,53 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                 Indlæser produkter…
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                {products.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => handleSelectProduct(p)}
-                    className="group text-left"
-                  >
-                    <Card className="overflow-hidden hover:shadow-md transition-shadow">
-                      <div className="aspect-square bg-muted overflow-hidden">
-                        <img
-                          src={p.imageUrl}
-                          alt={p.title}
-                          className="w-full h-full object-contain group-hover:scale-105 transition-transform"
-                        />
-                      </div>
-                      <CardContent className="p-2">
-                        <p className="text-xs font-medium truncate">{p.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {p.printZones.length} {p.printZones.length === 1 ? "zone" : "zoner"}
-                        </p>
-                      </CardContent>
-                    </Card>
-                  </button>
-                ))}
-              </div>
+              <>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  <Input
+                    placeholder="Søg på produktnavn…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                {(() => {
+                  const filtered = products.filter((p) =>
+                    p.title.toLowerCase().includes(search.toLowerCase())
+                  );
+                  return filtered.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-6 text-center">
+                      Ingen produkter matcher "{search}"
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                      {filtered.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => handleSelectProduct(p)}
+                          className="group text-left"
+                        >
+                          <Card className="overflow-hidden hover:shadow-md transition-shadow">
+                            <div className="aspect-square bg-muted overflow-hidden">
+                              <img
+                                src={p.imageUrl}
+                                alt={p.title}
+                                className="w-full h-full object-contain group-hover:scale-105 transition-transform"
+                              />
+                            </div>
+                            <CardContent className="p-2">
+                              <p className="text-xs font-medium truncate">{p.title}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {p.printZones.length} {p.printZones.length === 1 ? "zone" : "zoner"}
+                              </p>
+                            </CardContent>
+                          </Card>
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </>
             )}
           </div>
         )}
@@ -143,17 +177,21 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                 activeZoneIds={activeZoneIds}
                 focusedZoneId={focusedZoneId}
                 onActivate={handleZoneToggle}
-                onFocus={(id) => { setFocusedZoneId(id); setViewedZoneId(id); }}
+                onFocus={(id) => { setFocusedZoneId(id); setViewedZoneId(toSideZoneId(id, product!)); }}
                 onDeactivate={handleZoneDeactivate}
               />
             )}
 
             {/* Side viewer — browse product sides without changing active zones */}
-            {product.printZones.length > 1 && (
+            {(() => {
+              const sides = product.printZones.filter((z) =>
+                /^(front|back)$/i.test(z.name)
+              );
+              return sides.length > 1 ? (
               <div className="space-y-1.5">
                 <p className="text-sm font-medium text-muted-foreground">Se side</p>
                 <div className="flex flex-wrap gap-2">
-                  {product.printZones.map((z) => (
+                  {sides.map((z) => (
                     <button
                       key={z.id}
                       onClick={() => setViewedZoneId(z.id)}
@@ -175,7 +213,8 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                   ))}
                 </div>
               </div>
-            )}
+              ) : null;
+            })()}
 
             {/* V2-V6 – main canvas */}
             <ProductCanvas

@@ -37,25 +37,28 @@ export function ProductCanvas({
 }: Props) {
 
   function effectiveImageUrl(zone: PrintZone): string {
-    const isArm = /\barm\b/i.test(zone.id);
+    const isArm = /\barm\b/i.test(zone.name);
     return isArm ? product.imageUrl : (zone.imageUrl || product.imageUrl);
   }
 
   function displayXForZone(zone: PrintZone): number {
-    const isRightArm = /right/i.test(zone.id);
+    const isRightArm = /right/i.test(zone.name);
     return isRightArm ? product.imageWidth - zone.x - zone.width : zone.x;
   }
 
+  const isBackZone = (z: PrintZone) => /back/i.test(z.name);
+
   const viewedZone = product.printZones.find((z) => z.id === viewedZoneId);
   const viewedImageUrl = viewedZone ? effectiveImageUrl(viewedZone) : product.imageUrl;
+  const viewedIsBack = viewedZone ? isBackZone(viewedZone) : false;
 
-  // Zones to render on the current view: active zones whose image matches the viewed side
+  // Zones to render on the current view: active zones on the same side (front/back) as the viewed zone
   const visibleZones = product.printZones.filter(
-    (z) => activeZoneIds.includes(z.id) && effectiveImageUrl(z) === viewedImageUrl
+    (z) => activeZoneIds.includes(z.id) && isBackZone(z) === viewedIsBack
   );
 
   const focusedZone = product.printZones.find((z) => z.id === focusedZoneId) ?? null;
-  const focusedIsVisible = focusedZone ? effectiveImageUrl(focusedZone) === viewedImageUrl : false;
+  const focusedIsVisible = focusedZone ? isBackZone(focusedZone) === viewedIsBack : false;
 
   const [productImage] = useImage(viewedImageUrl);
   const [logoImage] = useImage(logoUrl ?? "");
