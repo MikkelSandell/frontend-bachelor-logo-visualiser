@@ -20,97 +20,140 @@ interface Props {
   product: Product;
   logoUrl?: string;
   logoId: string | null;
-  activeZoneId: string | null;
+  /** All zones that have a logo placed on them */
+  activeZoneIds: string[];
+  /** Which active zone is currently selected for editing */
+  focusedZoneId: string | null;
+  /** Which zone's image is currently displayed */
+  viewedZoneId: string | null;
+  onFocusZone: (zoneId: string) => void;
   onProductLoaded: (product: Product) => void;
 }
 
-export function ProductCanvas({ product, logoUrl, logoId, activeZoneId, onProductLoaded }: Props) {
-  const activeZone_forImg = product.printZones.find((z) => z.id === activeZoneId);
-  // ARM zones have heavily-cropped sleeve images — show the main product image instead.
-  const isArmZone  = /\barm\b/i.test(activeZone_forImg?.id ?? "");
-  // RIGHT ARM coordinates are mirrored when drawn on the front-facing product image.
-  const isRightArm = /right/i.test(activeZone_forImg?.id ?? "");
-  const [productImage] = useImage(
-    isArmZone ? product.imageUrl : (activeZone_forImg?.imageUrl || product.imageUrl)
+export function ProductCanvas({
+  product, logoUrl, logoId,
+  activeZoneIds, focusedZoneId, viewedZoneId,
+  onFocusZone, onProductLoaded,
+}: Props) {
+
+  function effectiveImageUrl(zone: PrintZone): string {
+    const isArm = /\barm\b/i.test(zone.id);
+    return isArm ? product.imageUrl : (zone.imageUrl || product.imageUrl);
+  }
+
+  function displayXForZone(zone: PrintZone): number {
+    const isRightArm = /right/i.test(zone.id);
+    return isRightArm ? product.imageWidth - zone.x - zone.width : zone.x;
+  }
+
+  const viewedZone = product.printZones.find((z) => z.id === viewedZoneId);
+  const viewedImageUrl = viewedZone ? effectiveImageUrl(viewedZone) : product.imageUrl;
+
+  // Zones to render on the current view: active zones whose image matches the viewed side
+  const visibleZones = product.printZones.filter(
+    (z) => activeZoneIds.includes(z.id) && effectiveImageUrl(z) === viewedImageUrl
   );
+
+  const focusedZone = product.printZones.find((z) => z.id === focusedZoneId) ?? null;
+  const focusedIsVisible = focusedZone ? effectiveImageUrl(focusedZone) === viewedImageUrl : false;
+
+  const [productImage] = useImage(viewedImageUrl);
   const [logoImage] = useImage(logoUrl ?? "");
-  const [logoState, setLogoState] = useState<LogoState | null>(null);
+
+  // Per-zone logo placements
+  const [logoStates, setLogoStates] = useState<Record<string, LogoState>>({});
   const [exporting, setExporting] = useState(false);
-  const stageRef = useRef<Konva.Stage>(null);
-  const logoRef = useRef<Konva.Image>(null);
+
   const transformerRef = useRef<Konva.Transformer>(null);
+  // Map of zoneId → Konva.Image node — populated via ref callbacks
+  const nodeRefs = useRef<Record<string, Konva.Image | null>>({});
 
-  // Attach transformer to the logo node whenever the logo is present
+  // Clear all placements when a new logo is uploaded
   useEffect(() => {
-    if (logoImage && logoState && transformerRef.current && logoRef.current) {
-      transformerRef.current.nodes([logoRef.current]);
-      transformerRef.current.getLayer()?.batchDraw();
-    }
-  }, [logoImage, logoState]);
-
-  // Notify parent when product is available
-  useEffect(() => {
-    onProductLoaded(product);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [product.id]);
-
-  const activeZone: PrintZone | null =
-    product.printZones.find((z) => z.id === activeZoneId) ?? null;
+    setLogoStates({});
+  }, [logoUrl]);
 
   const scale = Math.min(1, MAX_WIDTH / product.imageWidth);
   const canvasWidth  = product.imageWidth  * scale;
   const canvasHeight = product.imageHeight * scale;
 
-  // When an ARM zone is shown on the main front image, mirror x for RIGHT ARM so it
-  // appears on the correct side (Midocean arm coords are relative to a sleeve close-up).
-  function displayX(zone: PrintZone): number {
-    return isRightArm ? product.imageWidth - zone.x - zone.width : zone.x;
-  }
-
-  // V2 – place logo centrally in zone when zone or logo changes
+  // Initialize placement for any newly activated zone that doesn't have one yet
   useEffect(() => {
-    if (!activeZone || !logoImage) return;
-    const zoneDispX = displayX(activeZone);
-    const zoneW = activeZone.width  * scale;
-    const zoneH = activeZone.height * scale;
-    const logoW = Math.min(logoImage.width, zoneW * 0.5);
-    const logoH = (logoImage.height / logoImage.width) * logoW;
-    setLogoState({
-      x: zoneDispX * scale + zoneW / 2 - logoW / 2,
-      y: activeZone.y * scale + zoneH / 2 - logoH / 2,
-      width: logoW,
-      height: logoH,
+    if (!logoImage) return;
+    setLogoStates((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const zoneId of activeZoneIds) {
+        if (next[zoneId]) continue;
+        const zone = product.printZones.find((z) => z.id === zoneId);
+        if (!zone) continue;
+        const dispX = displayXForZone(zone);
+        const zoneW = zone.width  * scale;
+        const zoneH = zone.height * scale;
+        const logoW = Math.min(logoImage.width, zoneW * 0.5);
+        const logoH = (logoImage.height / logoImage.width) * logoW;
+        next[zoneId] = {
+          x: dispX * scale + zoneW / 2 - logoW / 2,
+          y: zone.y * scale + zoneH / 2 - logoH / 2,
+          width: logoW,
+          height: logoH,
+        };
+        changed = true;
+      }
+      return changed ? next : prev;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeZone, logoImage, scale, isRightArm]);
+  }, [activeZoneIds, logoImage, scale]);
 
-  // V6 – clamp logo position inside zone boundaries
+  // Attach transformer to the focused logo node
+  useEffect(() => {
+    if (!transformerRef.current) return;
+    if (focusedZoneId && focusedIsVisible && nodeRefs.current[focusedZoneId]) {
+      transformerRef.current.nodes([nodeRefs.current[focusedZoneId]!]);
+    } else {
+      transformerRef.current.nodes([]);
+    }
+    transformerRef.current.getLayer()?.batchDraw();
+  }, [focusedZoneId, focusedIsVisible, logoStates]);
+
+  useEffect(() => {
+    onProductLoaded(product);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product.id]);
+
   function clampToZone(lx: number, ly: number, lw: number, lh: number, zone: PrintZone) {
-    const zoneDispX = displayX(zone);
+    const zoneDispX = displayXForZone(zone);
     return {
       x: Math.max(zoneDispX * scale, Math.min(lx, (zoneDispX + zone.width)  * scale - lw)),
       y: Math.max(zone.y    * scale, Math.min(ly, (zone.y     + zone.height) * scale - lh)),
     };
   }
 
-  // V8 – eksporter PNG via backend
+  function updateLogoState(zoneId: string, patch: Partial<LogoState>) {
+    setLogoStates((prev) => ({
+      ...prev,
+      [zoneId]: { ...prev[zoneId], ...patch },
+    }));
+  }
+
+  // V8 – export PNG for the focused zone
   async function handleExportPng() {
-    if (!logoState || !activeZone || !logoId) {
-      alert("Vælg en zone, upload et logo, og vent til det er uploadet.");
+    const state = focusedZoneId ? logoStates[focusedZoneId] : null;
+    if (!state || !focusedZone || !logoId) {
+      alert("Vælg en printzone, upload et logo, og vent til det er uploadet.");
       return;
     }
     setExporting(true);
     try {
       const blob = await requestExportPng({
         productId: product.id,
-        zoneId: activeZone.id,
-        logoId: logoId, // Brug faktiske logoId, ikke logoUrl!
-        logoX: Math.round(logoState.x / scale),
-        logoY: Math.round(logoState.y / scale),
-        logoWidth: Math.round(logoState.width / scale),
-        logoHeight: Math.round(logoState.height / scale),
+        zoneId: focusedZone.id,
+        logoId,
+        logoX: Math.round(state.x / scale),
+        logoY: Math.round(state.y / scale),
+        logoWidth:  Math.round(state.width  / scale),
+        logoHeight: Math.round(state.height / scale),
       });
-
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -131,89 +174,106 @@ export function ProductCanvas({ product, logoUrl, logoId, activeZoneId, onProduc
     <div className="space-y-3">
       <div className="overflow-auto">
         <Stage
-          ref={stageRef}
           width={canvasWidth}
           height={canvasHeight}
           style={{ border: "1px solid #e8e8e8", borderRadius: "0.5rem" }}
+          onMouseDown={(e) => {
+            // Clicking the stage background deselects focused zone
+            if (e.target === e.target.getStage()) {
+              // no-op — keep focused zone; user must click a logo to switch
+            }
+          }}
         >
           <Layer>
-            {/* Product image */}
             {productImage && (
               <KonvaImage image={productImage} width={canvasWidth} height={canvasHeight} />
             )}
 
-            {/* Active print zone indicator */}
-            {activeZone && (
-              <Rect
-                x={displayX(activeZone) * scale}
-                y={activeZone.y * scale}
-                width={activeZone.width * scale}
-                height={activeZone.height * scale}
-                stroke="#ff6633"
-                strokeWidth={2}
-                dash={[6, 3]}
-                fill="rgba(255,102,51,0.06)"
-              />
-            )}
+            {/* Render one logo per visible active zone */}
+            {logoImage && visibleZones.map((zone) => {
+              const state = logoStates[zone.id];
+              if (!state) return null;
+              const isFocused = focusedZoneId === zone.id;
+              const dispX = displayXForZone(zone);
+              return (
+                <Rect
+                  key={`zone-${zone.id}`}
+                  x={dispX * scale}
+                  y={zone.y * scale}
+                  width={zone.width  * scale}
+                  height={zone.height * scale}
+                  stroke={isFocused ? "#ff6633" : "#aaaaaa"}
+                  strokeWidth={isFocused ? 2 : 1}
+                  dash={[6, 3]}
+                  fill={isFocused ? "rgba(255,102,51,0.06)" : "rgba(0,0,0,0.02)"}
+                />
+              );
+            })}
 
-            {/* V4/V5 – draggable, resizable logo constrained to zone */}
-            {logoImage && logoState && activeZone && (
-              <>
+            {logoImage && visibleZones.map((zone) => {
+              const state = logoStates[zone.id];
+              if (!state) return null;
+              const isFocused = focusedZoneId === zone.id;
+              return (
                 <KonvaImage
-                  ref={logoRef}
+                  key={`logo-${zone.id}`}
+                  ref={(node) => { nodeRefs.current[zone.id] = node; }}
                   image={logoImage}
-                  x={logoState.x}
-                  y={logoState.y}
-                  width={logoState.width}
-                  height={logoState.height}
-                  draggable
+                  x={state.x}
+                  y={state.y}
+                  width={state.width}
+                  height={state.height}
+                  draggable={isFocused}
+                  onClick={() => onFocusZone(zone.id)}
+                  onTap={() => onFocusZone(zone.id)}
                   dragBoundFunc={(pos) =>
-                    clampToZone(pos.x, pos.y, logoState.width, logoState.height, activeZone)
+                    clampToZone(pos.x, pos.y, state.width, state.height, zone)
                   }
                   onDragEnd={(e) => {
                     const { x, y } = e.target.position();
-                    setLogoState((prev) => (prev ? { ...prev, x, y } : prev));
+                    updateLogoState(zone.id, { x, y });
                   }}
-                  onTransformEnd={() => {
-                    const node = logoRef.current;
-                    if (!node || !activeZone) return;
+                  onTransformEnd={(e) => {
+                    const node = e.target as Konva.Image;
                     const newWidth  = Math.max(20, node.width()  * node.scaleX());
                     const newHeight = Math.max(20, node.height() * node.scaleY());
                     node.scaleX(1);
                     node.scaleY(1);
-                    // Clamp position after resize so logo stays inside zone
-                    const clamped = clampToZone(node.x(), node.y(), newWidth, newHeight, activeZone);
+                    const clamped = clampToZone(node.x(), node.y(), newWidth, newHeight, zone);
                     node.position(clamped);
-                    setLogoState({ x: clamped.x, y: clamped.y, width: newWidth, height: newHeight });
+                    updateLogoState(zone.id, { x: clamped.x, y: clamped.y, width: newWidth, height: newHeight });
                   }}
                 />
-                <Transformer
-                  ref={transformerRef}
-                  keepRatio={true}
-                  rotateEnabled={false}
-                  enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]}
-                  boundBoxFunc={(oldBox, newBox) => {
-                    if (newBox.width < 20 || newBox.height < 20) return oldBox;
-                    const zoneLeft   = displayX(activeZone) * scale;
-                    const zoneTop    = activeZone.y * scale;
-                    const zoneRight  = (displayX(activeZone) + activeZone.width)  * scale;
-                    const zoneBottom = (activeZone.y         + activeZone.height) * scale;
-                    if (
-                      newBox.x < zoneLeft  ||
-                      newBox.y < zoneTop   ||
-                      newBox.x + newBox.width  > zoneRight  ||
-                      newBox.y + newBox.height > zoneBottom
-                    ) return oldBox;
-                    return newBox;
-                  }}
-                />
-              </>
-            )}
+              );
+            })}
+
+            {/* Single Transformer — attached to the focused logo */}
+            <Transformer
+              ref={transformerRef}
+              keepRatio={true}
+              rotateEnabled={false}
+              enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]}
+              boundBoxFunc={(oldBox, newBox) => {
+                if (!focusedZone || !focusedIsVisible) return oldBox;
+                if (newBox.width < 20 || newBox.height < 20) return oldBox;
+                const dispX = displayXForZone(focusedZone);
+                const zoneLeft   = dispX * scale;
+                const zoneTop    = focusedZone.y * scale;
+                const zoneRight  = (dispX + focusedZone.width)  * scale;
+                const zoneBottom = (focusedZone.y + focusedZone.height) * scale;
+                if (
+                  newBox.x < zoneLeft  ||
+                  newBox.y < zoneTop   ||
+                  newBox.x + newBox.width  > zoneRight  ||
+                  newBox.y + newBox.height > zoneBottom
+                ) return oldBox;
+                return newBox;
+              }}
+            />
           </Layer>
         </Stage>
       </div>
 
-      {/* V8 – PNG eksport */}
       <Button variant="outline" size="sm" onClick={handleExportPng} disabled={exporting}>
         {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
         {exporting ? "Eksporterer…" : "Download som PNG"}

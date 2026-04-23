@@ -56,7 +56,8 @@ frontend/
 | `apps/admin/src/lib/utils.ts` | `cn()` — merges Tailwind classes via clsx + tailwind-merge |
 | `apps/viewer/src/lib/utils.ts` | Same `cn()` helper |
 | `apps/admin/src/components/ZoneEditor/` | Konva canvas for drawing rectangular print zones (req A2). Uses each zone's `imageUrl` as the canvas background per view — FRONT tab shows the FRONT position image, BACK tab shows the BACK position image. ARM zones display on the front tab; ARM RIGHT x is mirrored so it appears on the correct sleeve side. |
-| `apps/viewer/src/components/ProductCanvas/` | Konva canvas for logo drag/scale/constrain (req V2–V6). Logo uses a Konva `Transformer` for corner-drag resizing (4 corners, aspect-ratio locked, rotation disabled); resize is hard-clamped to zone boundaries via `boundBoxFunc`. |
+| `apps/viewer/src/components/ProductCanvas/` | Konva canvas for logo drag/scale/constrain (req V2–V6). Supports multiple active zones simultaneously — each zone keeps its own `LogoState` (`Record<string, LogoState>`). The viewed side (`viewedZoneId`) and the print zone being edited (`focusedZoneId`) are decoupled. Only logos whose zone image matches the viewed side are rendered; the focused logo gets a Konva `Transformer` (4 corners, aspect-ratio locked, rotation disabled, hard-clamped to zone boundary via `boundBoxFunc`). |
+| `apps/viewer/src/components/ZoneSelector/` | Multi-select zone picker. First click activates a zone; second click (while focused) removes it; clicking an active-but-unfocused zone focuses it without removing it. |
 | `apps/viewer/src/web-component.ts` | Shadow DOM web component entry point (req V11 / NF1) |
 
 ---
