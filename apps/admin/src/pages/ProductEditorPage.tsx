@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2, AlertCircle, Check } from "lucide-react";
 import type { Product, PrintZone } from "@logo-visualizer/shared";
-import { getMidoceanProduct, updateProduct } from "../api/productApi";
+import { getMidoceanProduct, updateProduct, createZone, updateZone, deleteZone, fromZoneResponse } from "../api/productApi";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
@@ -102,24 +102,41 @@ export function ProductEditorPage() {
     }
   }
 
-  // Immutable zone handlers
-  function handleZoneCreated(zone: Omit<PrintZone, "id">) {
-    // Generate stable ID for new zones
-    const newZone: PrintZone = {
-      ...zone,
-      id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    };
-    setZones((prev) => [...prev, newZone]);
+  // Zone handlers — each saves to DB immediately
+  async function handleZoneCreated(zone: Omit<PrintZone, "id">) {
+    if (!product) return;
+    setSaving(true);
+    setErrors([]);
+    try {
+      const saved = await createZone(product.id, zone);
+      setZones((prev) => [...prev, fromZoneResponse(saved, zone.imageUrl ?? product.imageUrl)]);
+      setSuccess(true);
+    } catch {
+      setErrors(["Zonen kunne ikke gemmes. Prøv igen."]);
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function handleZoneUpdated(zone: PrintZone) {
-    setZones((prev) =>
-      prev.map((z) => (z.id === zone.id ? { ...zone } : z))
-    );
+  async function handleZoneUpdated(zone: PrintZone) {
+    if (!product) return;
+    // Optimistically update local state first so the canvas feels instant
+    setZones((prev) => prev.map((z) => (z.id === zone.id ? zone : z)));
+    try {
+      await updateZone(product.id, zone.id, zone);
+    } catch {
+      setErrors(["Zonen kunne ikke opdateres. Prøv igen."]);
+    }
   }
 
-  function handleZoneDeleted(zoneId: string) {
+  async function handleZoneDeleted(zoneId: string) {
+    if (!product) return;
     setZones((prev) => prev.filter((z) => z.id !== zoneId));
+    try {
+      await deleteZone(product.id, zoneId);
+    } catch {
+      setErrors(["Zonen kunne ikke slettes. Prøv igen."]);
+    }
   }
 
   // Loading state

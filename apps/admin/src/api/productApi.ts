@@ -65,13 +65,98 @@ export const exportProducts = async () => {
   URL.revokeObjectURL(url);
 };
 
+// ─── Dev auth (Development only) ─────────────────────────────────────────────
+
+let _token: string | null = null;
+
+async function ensureToken() {
+  if (_token) return;
+  try {
+    const res = await client.post<{ token: string }>("/auth/dev-token");
+    _token = res.data.token;
+    client.defaults.headers.common["Authorization"] = `Bearer ${_token}`;
+  } catch {
+    // No dev-token endpoint (production) — caller will get 401
+  }
+}
+
 // ─── Print zones ─────────────────────────────────────────────────────────────
 
-export const createZone = (productId: string, zone: Omit<PrintZone, "id">) =>
-  client.post<{ data: PrintZone; success: boolean }>(`/products/${productId}/zones`, zone).then((r) => r.data);
+interface ZoneRequest {
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  maxPhysicalWidthMm: number;
+  maxPhysicalHeightMm: number;
+  maxColors: number;
+  imageUrl?: string;
+  allowedTechniqueNames: string[];
+}
 
-export const updateZone = (productId: string, zoneId: string, data: Partial<Omit<PrintZone, "id">>) =>
-  client.put<{ data: PrintZone; success: boolean }>(`/products/${productId}/zones/${zoneId}`, data).then((r) => r.data);
+interface ZoneResponse {
+  id: number;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  maxPhysicalWidthMm: number;
+  maxPhysicalHeightMm: number;
+  maxColors: number | null;
+  imageUrl?: string;
+  allowedTechniques: { id: number; name: string }[];
+}
 
-export const deleteZone = (productId: string, zoneId: string) =>
-  client.delete(`/products/${productId}/zones/${zoneId}`);
+function toRequest(zone: Omit<PrintZone, "id">): ZoneRequest {
+  return {
+    name: zone.name,
+    x: zone.x,
+    y: zone.y,
+    width: zone.width,
+    height: zone.height,
+    maxPhysicalWidthMm: zone.maxPhysicalWidthMm,
+    maxPhysicalHeightMm: zone.maxPhysicalHeightMm,
+    maxColors: zone.maxColors,
+    imageUrl: zone.imageUrl,
+    allowedTechniqueNames: zone.allowedTechniques,
+  };
+}
+
+export function fromZoneResponse(z: ZoneResponse, fallbackImageUrl: string): PrintZone {
+  return {
+    id: z.id.toString(),
+    name: z.name,
+    x: z.x,
+    y: z.y,
+    width: z.width,
+    height: z.height,
+    maxPhysicalWidthMm: Number(z.maxPhysicalWidthMm),
+    maxPhysicalHeightMm: Number(z.maxPhysicalHeightMm),
+    maxColors: z.maxColors ?? 0,
+    imageUrl: z.imageUrl ?? fallbackImageUrl,
+    allowedTechniques: z.allowedTechniques.map(
+      (t) => t.name.toLowerCase().replace(/ /g, "_") as PrintZone["allowedTechniques"][number]
+    ),
+  };
+}
+
+export const createZone = async (productId: string, zone: Omit<PrintZone, "id">) => {
+  await ensureToken();
+  return client
+    .post<{ data: ZoneResponse }>(`/products/${productId}/zones`, toRequest(zone))
+    .then((r) => r.data.data);
+};
+
+export const updateZone = async (productId: string, zoneId: string, zone: Omit<PrintZone, "id">) => {
+  await ensureToken();
+  return client
+    .put(`/products/${productId}/zones/${zoneId}`, toRequest(zone))
+    .then((r) => r.data);
+};
+
+export const deleteZone = async (productId: string, zoneId: string) => {
+  await ensureToken();
+  return client.delete(`/products/${productId}/zones/${zoneId}`);
+};

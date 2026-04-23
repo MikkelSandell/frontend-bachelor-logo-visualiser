@@ -32,9 +32,10 @@ interface Props {
     maxColors: number;
   }) => void;
   onCancel: () => void;
+  onDimensionsChange?: (widthMm: number, heightMm: number) => void;
 }
 
-export function ZoneForm({ initial, onSubmit, onCancel }: Props) {
+export function ZoneForm({ initial, onSubmit, onCancel, onDimensionsChange }: Props) {
   const [name, setName] = useState(initial.name);
   const [maxW, setMaxW] = useState(initial.maxPhysicalWidthMm);
   const [maxH, setMaxH] = useState(initial.maxPhysicalHeightMm);
@@ -78,7 +79,11 @@ export function ZoneForm({ initial, onSubmit, onCancel }: Props) {
             type="number"
             min={1}
             value={maxW}
-            onChange={(e) => setMaxW(Number(e.target.value))}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setMaxW(v);
+              onDimensionsChange?.(v, maxH);
+            }}
           />
         </div>
         <div className="space-y-1.5">
@@ -88,7 +93,11 @@ export function ZoneForm({ initial, onSubmit, onCancel }: Props) {
             type="number"
             min={1}
             value={maxH}
-            onChange={(e) => setMaxH(Number(e.target.value))}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setMaxH(v);
+              onDimensionsChange?.(maxW, v);
+            }}
           />
         </div>
       </div>

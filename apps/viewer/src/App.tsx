@@ -42,12 +42,8 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
     if (preloadedProductId) {
       getMidoceanProduct(preloadedProductId).then((p) => {
         setProduct(p);
-        if (p.printZones.length > 0) {
-          const firstId = p.printZones[0].id;
-          setActiveZoneIds([firstId]);
-          setFocusedZoneId(firstId);
-          setViewedZoneId(firstId);
-        }
+        const frontZone = p.printZones.find((z) => /^front$/i.test(z.name));
+        setViewedZoneId(frontZone?.id ?? p.printZones[0]?.id ?? null);
       });
     }
   }, [preloadedProductId]);
@@ -63,11 +59,11 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
   }
 
   function handleSelectProduct(p: Product) {
-    const firstId = p.printZones.length > 0 ? p.printZones[0].id : null;
     setProduct(p);
-    setActiveZoneIds(firstId ? [firstId] : []);
-    setFocusedZoneId(firstId);
-    setViewedZoneId(firstId ? toSideZoneId(firstId, p) : null);
+    setActiveZoneIds([]);
+    setFocusedZoneId(null);
+    const frontZone = p.printZones.find((z) => /^front$/i.test(z.name));
+    setViewedZoneId(frontZone?.id ?? p.printZones[0]?.id ?? null);
   }
 
   /** Activate an inactive zone and focus it */
@@ -225,14 +221,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
               focusedZoneId={focusedZoneId}
               viewedZoneId={viewedZoneId}
               onFocusZone={(id) => { setFocusedZoneId(id); }}
-              onProductLoaded={(p) => {
-                if (activeZoneIds.length === 0 && p.printZones.length > 0) {
-                  const firstId = p.printZones[0].id;
-                  setActiveZoneIds([firstId]);
-                  setFocusedZoneId(firstId);
-                  setViewedZoneId(firstId);
-                }
-              }}
+              onProductLoaded={() => {}}
             />
 
             {/* V7 – technique selector for the focused zone */}

@@ -52,10 +52,10 @@ export function ProductCanvas({
   const viewedImageUrl = viewedZone ? effectiveImageUrl(viewedZone) : product.imageUrl;
   const viewedIsBack = viewedZone ? isBackZone(viewedZone) : false;
 
-  // Zones to render on the current view: active zones on the same side (front/back) as the viewed zone
-  const visibleZones = product.printZones.filter(
-    (z) => activeZoneIds.includes(z.id) && isBackZone(z) === viewedIsBack
-  );
+  // All zones on the current side — always shown as outlines
+  const allSideZones = product.printZones.filter((z) => isBackZone(z) === viewedIsBack);
+  // Active zones on the current side — shown with logos
+  const visibleZones = allSideZones.filter((z) => activeZoneIds.includes(z.id));
 
   const focusedZone = product.printZones.find((z) => z.id === focusedZoneId) ?? null;
   const focusedIsVisible = focusedZone ? isBackZone(focusedZone) === viewedIsBack : false;
@@ -192,10 +192,9 @@ export function ProductCanvas({
               <KonvaImage image={productImage} width={canvasWidth} height={canvasHeight} />
             )}
 
-            {/* Render one logo per visible active zone */}
-            {logoImage && visibleZones.map((zone) => {
-              const state = logoStates[zone.id];
-              if (!state) return null;
+            {/* Zone outlines — always visible so the user can see print areas without a logo */}
+            {allSideZones.map((zone) => {
+              const isActive  = activeZoneIds.includes(zone.id);
               const isFocused = focusedZoneId === zone.id;
               const dispX = displayXForZone(zone);
               return (
@@ -205,10 +204,10 @@ export function ProductCanvas({
                   y={zone.y * scale}
                   width={zone.width  * scale}
                   height={zone.height * scale}
-                  stroke={isFocused ? "#ff6633" : "#aaaaaa"}
+                  stroke={isFocused ? "#ff6633" : isActive ? "#ff9966" : "#bbbbbb"}
                   strokeWidth={isFocused ? 2 : 1}
                   dash={[6, 3]}
-                  fill={isFocused ? "rgba(255,102,51,0.06)" : "rgba(0,0,0,0.02)"}
+                  fill={isFocused ? "rgba(255,102,51,0.06)" : isActive ? "rgba(255,102,51,0.03)" : "transparent"}
                 />
               );
             })}
