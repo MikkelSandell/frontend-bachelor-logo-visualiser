@@ -225,9 +225,11 @@ export function ZoneEditor({ product, zones, onZoneCreated, onZoneUpdated, onZon
             {visibleZones.map((zone) => {
               const isArm      = /arm/i.test(zone.name);
               const isRightArm = /right/i.test(zone.name);
+              // When editing this zone, use editingZone's live dimensions for the preview
+              const displayZone = editingZone?.id === zone.id ? editingZone : zone;
               const zoneX      = isRightArm
-                ? (product.imageWidth - zone.x - zone.width) * scale
-                : zone.x * scale;
+                ? (product.imageWidth - displayZone.x - displayZone.width) * scale
+                : displayZone.x * scale;
               const isSelected = selectedZoneId === zone.id;
 
               return (
@@ -235,17 +237,18 @@ export function ZoneEditor({ product, zones, onZoneCreated, onZoneUpdated, onZon
                   key={zone.id}
                   ref={(node) => { zoneRectRefs.current[zone.id] = node; }}
                   x={zoneX}
-                  y={zone.y * scale}
-                  width={zone.width  * scale}
-                  height={zone.height * scale}
+                  y={displayZone.y * scale}
+                  width={displayZone.width  * scale}
+                  height={displayZone.height * scale}
                   stroke={isSelected ? "#0057ff" : "#ff6633"}
                   strokeWidth={2}
                   fill={isSelected ? "rgba(0,87,255,0.08)" : "rgba(255,102,51,0.12)"}
-                  draggable={isSelected && !isArm}
+                  draggable={!isArm && !pendingCanvas}
                   dragBoundFunc={(pos) => ({
-                    x: Math.max(0, Math.min(pos.x, canvasWidth  - zone.width  * scale)),
-                    y: Math.max(0, Math.min(pos.y, canvasHeight - zone.height * scale)),
+                    x: Math.max(0, Math.min(pos.x, canvasWidth  - displayZone.width  * scale)),
+                    y: Math.max(0, Math.min(pos.y, canvasHeight - displayZone.height * scale)),
                   })}
+                  onDragStart={() => { if (!pendingCanvas) setSelectedZoneId(zone.id); }}
                   onClick={() => { if (!pendingCanvas) setSelectedZoneId(zone.id); }}
                   onDblClick={() => { if (!pendingCanvas) { setSelectedZoneId(zone.id); setEditingZone(zone); } }}
                   onDragEnd={(e) => {
@@ -362,6 +365,9 @@ export function ZoneEditor({ product, zones, onZoneCreated, onZoneUpdated, onZon
             setEditingZone(null);
           }}
           onCancel={() => setEditingZone(null)}
+          onDimensionsChange={(wMm, hMm) => {
+            setEditingZone((prev) => prev ? { ...prev, width: Math.round(wMm), height: Math.round(hMm) } : null);
+          }}
         />
       )}
 

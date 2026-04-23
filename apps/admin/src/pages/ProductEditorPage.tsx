@@ -120,12 +120,16 @@ export function ProductEditorPage() {
 
   async function handleZoneUpdated(zone: PrintZone) {
     if (!product) return;
-    // Optimistically update local state first so the canvas feels instant
     setZones((prev) => prev.map((z) => (z.id === zone.id ? zone : z)));
+    setSaving(true);
+    setErrors([]);
     try {
       await updateZone(product.id, zone.id, zone);
+      setSuccess(true);
     } catch {
       setErrors(["Zonen kunne ikke opdateres. Prøv igen."]);
+    } finally {
+      setSaving(false);
     }
   }
 

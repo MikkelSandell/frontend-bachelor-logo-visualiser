@@ -10,7 +10,7 @@ Bachelor project: **Logo Visualizer & Product Setup Tool**
 
 A React + TypeScript monorepo that is the **frontend** component of a standalone service for visualising customer logos on promotional merchandise products (t-shirts, mugs, pens, etc.).
 
-The backend is a separate .NET / ASP.NET Core project (`LogoVisualizer.Api`) that runs at `http://localhost:5000` during development. **No database is required** — the backend serves all product data from a Midocean JSON file.
+The backend is a separate .NET / ASP.NET Core project (`LogoVisualizer.Api`) that runs at `http://localhost:5000` during development. The backend uses a SQL Server database (Docker) with automatic JSON fallback — start the database with `docker compose up -d` from the backend folder before running the frontend.
 
 ---
 
@@ -51,12 +51,13 @@ frontend/
 | Path | Purpose |
 |------|---------|
 | `packages/shared/src/index.ts` | Single source of truth for all domain types (`Product`, `PrintZone`, `PrintTechnique`, …) |
-| `apps/admin/src/api/productApi.ts` | All Admin → backend API calls — `getMidoceanProducts()`, `getMidoceanProduct()` as primary; DB functions exist but require DB |
+| `apps/admin/src/api/productApi.ts` | All Admin → backend API calls. Includes `ensureToken()` which fetches a dev JWT on first write. `createZone`/`updateZone`/`deleteZone` send `allowedTechniqueNames` (string names). `fromZoneResponse()` maps backend zone shape to `PrintZone`. |
 | `apps/viewer/src/api/viewerApi.ts` | All Viewer → backend API calls — `getMidoceanProducts()`, `getMidoceanProduct()` |
 | `apps/admin/src/lib/utils.ts` | `cn()` — merges Tailwind classes via clsx + tailwind-merge |
 | `apps/viewer/src/lib/utils.ts` | Same `cn()` helper |
-| `apps/admin/src/components/ZoneEditor/` | Konva canvas for drawing rectangular print zones (req A2). Uses each zone's `imageUrl` as the canvas background per view — FRONT tab shows the FRONT position image, BACK tab shows the BACK position image. ARM zones display on the front tab; ARM RIGHT x is mirrored so it appears on the correct sleeve side. |
-| `apps/viewer/src/components/ProductCanvas/` | Konva canvas for logo drag/scale/constrain (req V2–V6). Supports multiple active zones simultaneously — each zone keeps its own `LogoState` (`Record<string, LogoState>`). The viewed side (`viewedZoneId`) and the print zone being edited (`focusedZoneId`) are decoupled. Only logos whose zone image matches the viewed side are rendered; the focused logo gets a Konva `Transformer` (4 corners, aspect-ratio locked, rotation disabled, hard-clamped to zone boundary via `boundBoxFunc`). |
+| `apps/admin/src/components/ZoneEditor/` | Konva canvas for drawing and editing print zones (req A2–A4). Draw by click-drag; after drawing, the zone stays on canvas with a Konva `Transformer` for drag/resize before saving. Existing zones are always draggable (no prior selection required). Changing mm values in the form live-previews the zone size on canvas. ARM RIGHT x is mirrored. Uses `zone.name` (not `zone.id`) for all zone-type checks. |
+| `apps/admin/src/components/ZoneForm/` | Metadata form for zone name, mm sizes, techniques, max colours. `onDimensionsChange` optional prop fires when mm inputs change — used by `ZoneEditor` to update the canvas preview live. |
+| `apps/viewer/src/components/ProductCanvas/` | Konva canvas for logo drag/scale/constrain (req V2–V6). Zone outlines are always visible (no logo required). Visible zones are grouped by side (front/back) based on `zone.name`, not image URL. Uses `zone.name` for arm/right-arm detection. Side switching (`viewedZoneId`) always resolves to a FRONT or BACK zone. |
 | `apps/viewer/src/components/ZoneSelector/` | Multi-select zone picker. First click activates a zone; second click (while focused) removes it; clicking an active-but-unfocused zone focuses it without removing it. |
 | `apps/viewer/src/web-component.ts` | Shadow DOM web component entry point (req V11 / NF1) |
 
@@ -98,13 +99,13 @@ Both apps use the **b2b design system**, matching the look and feel of `b2b-prom
 
 Shadcn/ui-style components built with CVA — **not** imported from a registry, built in-repo:
 
-| Component | Variants |
-|-----------|----------|
-| `Button` | default, secondary, outline, ghost, destructive, link |
-| `Card` | CardHeader, CardTitle, CardDescription, CardContent, CardFooter |
-| `Input` | — |
-| `Badge` | default, secondary, outline, destructive |
-| `Label` | — |
+| Component | Variants | Apps |
+|-----------|----------|------|
+| `Button` | default, secondary, outline, ghost, destructive, link | both |
+| `Card` | CardHeader, CardTitle, CardDescription, CardContent, CardFooter | both |
+| `Input` | — | both |
+| `Badge` | default, secondary, outline, destructive | both |
+| `Label` | — | admin only |
 
 ---
 
@@ -117,7 +118,7 @@ Both apps call the **Midocean adapted endpoints** on the backend:
 | `getMidoceanProducts()` | `GET /api/midocean-products/as-products` |
 | `getMidoceanProduct(id)` | `GET /api/midocean-products/{id}/as-product` |
 
-Returns `Product[]` / `Product` matching the shared type directly. No database is needed.
+Returns `Product[]` / `Product` matching the shared type directly. The backend serves this from the SQL Server database (DB-first) with automatic fallback to the JSON file. Zone `id` values are numeric DB integers serialised as strings (e.g. `"5"`) — not Midocean master codes.
 
 ---
 
@@ -150,13 +151,13 @@ Both apps proxy `/api/*` to `http://localhost:5000`.
 | ID | Where |
 |----|-------|
 | A1 | `ProductEditorPage` – product image upload |
-| A2–A4 | `ZoneEditor` component – draw/edit/delete zones |
+| A2–A4 | `ZoneEditor` component – draw, drag/resize, edit, delete zones; new zones saved to DB immediately on form submit |
 | A5 | `ProductsPage` – import JSON (DB-backed, not active) |
 | A6 | `ProductsPage` – export JSON (DB-backed, not active) |
-| A7 | `ProductsPage` – product list |
-| A8 | `productApi.ts` – all mutations go through backend |
+| A7 | `ProductsPage` – product list with search filter |
+| A8 | `productApi.ts` – zone create/update/delete call DB directly; auth token fetched automatically |
 | V1 | `LogoUploader` component |
-| V2–V6 | `ProductCanvas` component — `product` prop passed directly from `App` |
+| V2–V6 | `ProductCanvas` component — zone outlines always visible; side grouping by name; logo constrained to zone |
 | V3 | `ZoneSelector` component |
 | V7 | `TechniqueSelector` component |
 | V8 | `ProductCanvas.handleExportPng()` |
