@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Stage, Layer, Image as KonvaImage, Rect, Transformer } from "react-konva";
+import React, { useEffect, useRef, useState } from "react";
+import { Stage, Layer, Image as KonvaImage, Rect, Text, Transformer } from "react-konva";
 import Konva from "konva";
 import useImage from "use-image";
 import type { Product, PrintZone, PrintTechnique } from "@logo-visualizer/shared";
@@ -261,33 +261,53 @@ export function ZoneEditor({ product, zones, onZoneCreated, onZoneUpdated, onZon
               const isSelected = selectedZoneId === zone.id;
 
               return (
-                <Rect
-                  key={zone.id}
-                  ref={(node) => { zoneRectRefs.current[zone.id] = node; }}
-                  x={zoneX}
-                  y={zone.y * scale}
-                  width={zone.width  * scale}
-                  height={zone.height * scale}
-                  stroke={isSelected ? "#0057ff" : "#ff6633"}
-                  strokeWidth={2}
-                  fill={isSelected ? "rgba(0,87,255,0.08)" : "rgba(255,102,51,0.12)"}
-                  draggable={!isArm && !pendingCanvas && editingZone?.id === zone.id}
-                  dragBoundFunc={(pos) => ({
-                    x: Math.max(0, Math.min(pos.x, canvasWidth  - zone.width  * scale)),
-                    y: Math.max(0, Math.min(pos.y, canvasHeight - zone.height * scale)),
-                  })}
-                  onDragStart={() => { setSelectedZoneId(zone.id); }}
-                  onClick={() => { if (!pendingCanvas) setSelectedZoneId(zone.id); }}
-                  onDblClick={() => { if (!pendingCanvas) { setSelectedZoneId(zone.id); setEditingZone(zone); setOriginalZone(zone); } }}
-                  onDragEnd={(e) => {
-                    onZoneUpdated({
-                      ...zone,
-                      x: Math.round(e.target.x() / scale),
-                      y: Math.round(e.target.y() / scale),
-                    });
-                  }}
-                  onTransformEnd={(e) => handleExistingTransformEnd(zone, e)}
-                />
+                <React.Fragment key={zone.id}>
+                  <Rect
+                    ref={(node) => { zoneRectRefs.current[zone.id] = node; }}
+                    x={zoneX}
+                    y={zone.y * scale}
+                    width={zone.width  * scale}
+                    height={zone.height * scale}
+                    stroke={isSelected ? "#0057ff" : "#ff6633"}
+                    strokeWidth={2}
+                    fill={isSelected ? "rgba(0,87,255,0.08)" : "rgba(255,102,51,0.12)"}
+                    draggable={!isArm && !pendingCanvas && editingZone?.id === zone.id}
+                    dragBoundFunc={(pos) => ({
+                      x: Math.max(0, Math.min(pos.x, canvasWidth  - zone.width  * scale)),
+                      y: Math.max(0, Math.min(pos.y, canvasHeight - zone.height * scale)),
+                    })}
+                    onDragStart={() => { setSelectedZoneId(zone.id); }}
+                    onClick={() => { if (!pendingCanvas) setSelectedZoneId(zone.id); }}
+                    onDblClick={() => { if (!pendingCanvas) { setSelectedZoneId(zone.id); setEditingZone(zone); setOriginalZone(zone); } }}
+                    onDragEnd={(e) => {
+                      onZoneUpdated({
+                        ...zone,
+                        x: Math.round(e.target.x() / scale),
+                        y: Math.round(e.target.y() / scale),
+                      });
+                    }}
+                    onTransformEnd={(e) => handleExistingTransformEnd(zone, e)}
+                  />
+                  {zone.name && (
+                    <Text
+                      key={`label-${zone.id}`}
+                      x={zoneX + 4}
+                      y={zone.y * scale + 4}
+                      width={zone.width * scale - 8}
+                      text={zone.name}
+                      fontSize={12}
+                      fontStyle="bold"
+                      fontFamily="Inter, sans-serif"
+                      fill={isSelected ? "#0057ff" : "#ff6633"}
+                      shadowColor="white"
+                      shadowBlur={3}
+                      shadowOpacity={1}
+                      listening={false}
+                      wrap="none"
+                      ellipsis
+                    />
+                  )}
+                </React.Fragment>
               );
             })}
 
