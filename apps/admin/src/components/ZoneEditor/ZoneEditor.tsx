@@ -443,7 +443,13 @@ export function ZoneEditor({ product, zones, onZoneCreated, onZoneUpdated, onZon
           <Button
             variant="destructive"
             size="sm"
-            onClick={() => { onZoneDeleted(selectedZoneId); setSelectedZoneId(null); }}
+            onClick={() => {
+              const zone = zones.find((z) => z.id === selectedZoneId);
+              if (window.confirm(`Er du sikker på at du vil slette zonen "${zone?.name ?? ""}"?`)) {
+                onZoneDeleted(selectedZoneId);
+                setSelectedZoneId(null);
+              }
+            }}
           >
             <Trash2 className="h-4 w-4 mr-2" />
             Slet zone

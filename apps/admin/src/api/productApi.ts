@@ -145,8 +145,8 @@ export function fromZoneResponse(z: ZoneResponse, fallbackImageUrl: string): Pri
 export const createZone = async (productId: string, zone: Omit<PrintZone, "id">) => {
   await ensureToken();
   return client
-    .post<{ data: ZoneResponse }>(`/products/${productId}/zones`, toRequest(zone))
-    .then((r) => r.data.data);
+    .post<ZoneResponse>(`/products/${productId}/zones`, toRequest(zone))
+    .then((r) => r.data);
 };
 
 export const updateZone = async (productId: string, zoneId: string, zone: Omit<PrintZone, "id">) => {
