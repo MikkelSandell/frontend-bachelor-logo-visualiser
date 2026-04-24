@@ -55,8 +55,8 @@ frontend/
 | `apps/viewer/src/api/viewerApi.ts` | All Viewer → backend API calls — `getMidoceanProducts()`, `getMidoceanProduct()` |
 | `apps/admin/src/lib/utils.ts` | `cn()` — merges Tailwind classes via clsx + tailwind-merge |
 | `apps/viewer/src/lib/utils.ts` | Same `cn()` helper |
-| `apps/admin/src/components/ZoneEditor/` | Konva canvas for drawing and editing print zones (req A2–A4). Draw by click-drag; after drawing, the zone stays on canvas with a Konva `Transformer` for drag/resize before saving. Existing zones are always draggable (no prior selection required). Changing mm values in the form live-previews the zone size on canvas. ARM RIGHT x is mirrored. Uses `zone.name` (not `zone.id`) for all zone-type checks. |
-| `apps/admin/src/components/ZoneForm/` | Metadata form for zone name, mm sizes, techniques, max colours. `onDimensionsChange` optional prop fires when mm inputs change — used by `ZoneEditor` to update the canvas preview live. |
+| `apps/admin/src/components/ZoneEditor/` | Konva canvas for drawing and editing print zones (req A2–A4). Draw new zones by click-drag (always available). Click an existing zone to select/highlight it; click "Rediger zone" to enter per-zone edit mode — only that zone becomes draggable/resizable with transformer handles. Zone names are rendered as labels on the canvas. `originalZone` is stored when editing starts; "Annuller" restores it. mm inputs and canvas pixel size stay in sync proportionally via `mmPerPxW`/`mmPerPxH` ratios derived from `originalZone`. Delete buttons show a `window.confirm` before acting. ARM RIGHT x is mirrored. Uses `zone.name` (not `zone.id`) for all zone-type checks. |
+| `apps/admin/src/components/ZoneForm/` | Metadata form for zone name, mm sizes, techniques, max colours. In **new-zone mode** (`showSubmit=true`, default): has "Gem zone" submit button. In **edit mode** (`showSubmit=false`): no submit button; every field change fires `onChange` live so changes flow immediately to local state; "Færdig" closes the form keeping changes, "Annuller" restores `originalZone`. `forcedWidthMm`/`forcedHeightMm` props allow the canvas to push updated mm values into the form when the user resizes via transformer. `onDimensionsChange` still fires for the pending-zone canvas preview. |
 | `apps/viewer/src/components/ProductCanvas/` | Konva canvas for logo drag/scale/constrain (req V2–V6). Zone outlines are always visible (no logo required). Visible zones are grouped by side (front/back) based on `zone.name`, not image URL. Uses `zone.name` for arm/right-arm detection. Side switching (`viewedZoneId`) always resolves to a FRONT or BACK zone. |
 | `apps/viewer/src/components/ZoneSelector/` | Multi-select zone picker. First click activates a zone; second click (while focused) removes it; clicking an active-but-unfocused zone focuses it without removing it. |
 | `apps/viewer/src/web-component.ts` | Shadow DOM web component entry point (req V11 / NF1) |
@@ -151,11 +151,11 @@ Both apps proxy `/api/*` to `http://localhost:5000`.
 | ID | Where |
 |----|-------|
 | A1 | `ProductEditorPage` – product image upload |
-| A2–A4 | `ZoneEditor` component – draw, drag/resize, edit, delete zones; new zones saved to DB immediately on form submit |
+| A2–A4 | `ZoneEditor` component – draw, drag/resize, edit, delete zones; all changes are local-only until "Gem ændringer" is pressed (`ProductEditorPage`) |
 | A5 | `ProductsPage` – import JSON (DB-backed, not active) |
 | A6 | `ProductsPage` – export JSON (DB-backed, not active) |
 | A7 | `ProductsPage` – product list with search filter |
-| A8 | `productApi.ts` – zone create/update/delete call DB directly; auth token fetched automatically |
+| A8 | `productApi.ts` – `createZone`/`updateZone`/`deleteZone` called in batch from `ProductEditorPage.handleSave()`; auth token fetched automatically via `ensureToken()` |
 | V1 | `LogoUploader` component |
 | V2–V6 | `ProductCanvas` component — zone outlines always visible; side grouping by name; logo constrained to zone |
 | V3 | `ZoneSelector` component |
