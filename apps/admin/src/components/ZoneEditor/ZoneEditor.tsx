@@ -13,6 +13,8 @@ interface Props {
   onZoneCreated: (zone: Omit<PrintZone, "id">) => void;
   onZoneUpdated: (zone: PrintZone) => void;
   onZoneDeleted: (zoneId: string) => void;
+  focusZoneId?: string | null;
+  onFocusConsumed?: () => void;
 }
 
 const MAX_WIDTH = 800;
@@ -37,7 +39,7 @@ function getViewImageUrl(zones: PrintZone[], view: "front" | "back", fallback: s
   );
 }
 
-export function ZoneEditor({ product, zones, onZoneCreated, onZoneUpdated, onZoneDeleted }: Props) {
+export function ZoneEditor({ product, zones, onZoneCreated, onZoneUpdated, onZoneDeleted, focusZoneId, onFocusConsumed }: Props) {
   const [view, setView] = useState<"front" | "back">("front");
 
   const viewImageUrl = getViewImageUrl(zones, view, product.imageUrl);
@@ -64,25 +66,47 @@ export function ZoneEditor({ product, zones, onZoneCreated, onZoneUpdated, onZon
   // ── Selected / editing existing zone ──────────────────────────────────────
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [editingZone,    setEditingZone]    = useState<PrintZone | null>(null);
+  const [originalZone,   setOriginalZone]   = useState<PrintZone | null>(null);
+
+  // Pixel-to-mm ratios derived from the zone's state at the moment editing started.
+  // Must be declared after originalZone useState.
+  const mmPerPxW = originalZone && originalZone.width > 0 && originalZone.maxPhysicalWidthMm > 0
+    ? originalZone.maxPhysicalWidthMm / originalZone.width
+    : 1;
+  const mmPerPxH = originalZone && originalZone.height > 0 && originalZone.maxPhysicalHeightMm > 0
+    ? originalZone.maxPhysicalHeightMm / originalZone.height
+    : 1;
 
   // ── Konva refs ─────────────────────────────────────────────────────────────
   const transformerRef  = useRef<Konva.Transformer>(null);
   const pendingRectRef  = useRef<Konva.Rect | null>(null);
   const zoneRectRefs    = useRef<Record<string, Konva.Rect | null>>({});
 
-  // Attach the transformer to whichever rect is currently active
+  // Select and open edit form for a zone triggered from outside (zone list)
+  useEffect(() => {
+    if (!focusZoneId) return;
+    const zone = zones.find((z) => z.id === focusZoneId);
+    if (zone) {
+      setSelectedZoneId(focusZoneId);
+      setEditingZone(zone);
+      setOriginalZone(zone);
+    }
+    onFocusConsumed?.();
+  }, [focusZoneId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Attach the transformer only to the zone actively being edited (or the pending zone)
   useEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
     if (pendingCanvas && pendingRectRef.current) {
       tr.nodes([pendingRectRef.current]);
-    } else if (selectedZoneId && zoneRectRefs.current[selectedZoneId]) {
-      tr.nodes([zoneRectRefs.current[selectedZoneId]!]);
+    } else if (editingZone && zoneRectRefs.current[editingZone.id]) {
+      tr.nodes([zoneRectRefs.current[editingZone.id]!]);
     } else {
       tr.nodes([]);
     }
     tr.getLayer()?.batchDraw();
-  }, [pendingCanvas, selectedZoneId]);
+  }, [pendingCanvas, editingZone]);
 
   // Keep pendingZone's unscaled coords in sync with pendingCanvas
   function syncPending(canvas: { x: number; y: number; width: number; height: number }) {
@@ -180,12 +204,16 @@ export function ZoneEditor({ product, zones, onZoneCreated, onZoneUpdated, onZon
     node.position({ x: newX, y: newY });
     node.width(newWidth);
     node.height(newHeight);
+    const newWidthPx  = Math.round(newWidth  / scale);
+    const newHeightPx = Math.round(newHeight / scale);
     onZoneUpdated({
       ...zone,
-      x:      Math.round(newX      / scale),
-      y:      Math.round(newY      / scale),
-      width:  Math.round(newWidth  / scale),
-      height: Math.round(newHeight / scale),
+      x:                   Math.round(newX / scale),
+      y:                   Math.round(newY / scale),
+      width:               newWidthPx,
+      height:              newHeightPx,
+      maxPhysicalWidthMm:  Math.round(newWidthPx  * mmPerPxW),
+      maxPhysicalHeightMm: Math.round(newHeightPx * mmPerPxH),
     });
   }
 
@@ -194,7 +222,9 @@ export function ZoneEditor({ product, zones, onZoneCreated, onZoneUpdated, onZon
       <p className="text-sm text-muted-foreground">
         {pendingCanvas
           ? "Flyt eller tilpas zonen — træk i hjørnerne for at ændre størrelse. Udfyld metadata nedenfor og gem."
-          : "Tegn en zone ved at klikke og trække. Klik på en eksisterende zone for at vælge den."}
+          : editingZone
+          ? "Træk zonen eller resize via hjørnerne. Opdater metadata nedenfor og gem."
+          : "Tegn en ny zone ved at klikke og trække. Klik på en eksisterende zone for at vælge den, og tryk derefter 'Rediger zone'."}
       </p>
 
       {/* View toggle */}
@@ -225,11 +255,9 @@ export function ZoneEditor({ product, zones, onZoneCreated, onZoneUpdated, onZon
             {visibleZones.map((zone) => {
               const isArm      = /arm/i.test(zone.name);
               const isRightArm = /right/i.test(zone.name);
-              // When editing this zone, use editingZone's live dimensions for the preview
-              const displayZone = editingZone?.id === zone.id ? editingZone : zone;
               const zoneX      = isRightArm
-                ? (product.imageWidth - displayZone.x - displayZone.width) * scale
-                : displayZone.x * scale;
+                ? (product.imageWidth - zone.x - zone.width) * scale
+                : zone.x * scale;
               const isSelected = selectedZoneId === zone.id;
 
               return (
@@ -237,20 +265,20 @@ export function ZoneEditor({ product, zones, onZoneCreated, onZoneUpdated, onZon
                   key={zone.id}
                   ref={(node) => { zoneRectRefs.current[zone.id] = node; }}
                   x={zoneX}
-                  y={displayZone.y * scale}
-                  width={displayZone.width  * scale}
-                  height={displayZone.height * scale}
+                  y={zone.y * scale}
+                  width={zone.width  * scale}
+                  height={zone.height * scale}
                   stroke={isSelected ? "#0057ff" : "#ff6633"}
                   strokeWidth={2}
                   fill={isSelected ? "rgba(0,87,255,0.08)" : "rgba(255,102,51,0.12)"}
-                  draggable={!isArm && !pendingCanvas}
+                  draggable={!isArm && !pendingCanvas && editingZone?.id === zone.id}
                   dragBoundFunc={(pos) => ({
-                    x: Math.max(0, Math.min(pos.x, canvasWidth  - displayZone.width  * scale)),
-                    y: Math.max(0, Math.min(pos.y, canvasHeight - displayZone.height * scale)),
+                    x: Math.max(0, Math.min(pos.x, canvasWidth  - zone.width  * scale)),
+                    y: Math.max(0, Math.min(pos.y, canvasHeight - zone.height * scale)),
                   })}
-                  onDragStart={() => { if (!pendingCanvas) setSelectedZoneId(zone.id); }}
+                  onDragStart={() => { setSelectedZoneId(zone.id); }}
                   onClick={() => { if (!pendingCanvas) setSelectedZoneId(zone.id); }}
-                  onDblClick={() => { if (!pendingCanvas) { setSelectedZoneId(zone.id); setEditingZone(zone); } }}
+                  onDblClick={() => { if (!pendingCanvas) { setSelectedZoneId(zone.id); setEditingZone(zone); setOriginalZone(zone); } }}
                   onDragEnd={(e) => {
                     onZoneUpdated({
                       ...zone,
@@ -315,7 +343,7 @@ export function ZoneEditor({ product, zones, onZoneCreated, onZoneUpdated, onZon
               />
             )}
 
-            {/* Single Transformer — attaches to pending zone or selected existing zone */}
+            {/* Single Transformer — attaches to the zone being edited or the pending zone */}
             <Transformer
               ref={transformerRef}
               keepRatio={false}
@@ -356,20 +384,38 @@ export function ZoneEditor({ product, zones, onZoneCreated, onZoneUpdated, onZon
         />
       )}
 
-      {/* Edit form for existing zone */}
-      {editingZone && (
-        <ZoneForm
-          initial={editingZone}
-          onSubmit={(meta) => {
-            onZoneUpdated({ ...editingZone!, ...meta });
-            setEditingZone(null);
-          }}
-          onCancel={() => setEditingZone(null)}
-          onDimensionsChange={(wMm, hMm) => {
-            setEditingZone((prev) => prev ? { ...prev, width: Math.round(wMm), height: Math.round(hMm) } : null);
-          }}
-        />
-      )}
+      {/* Edit form for existing zone — changes flow live to local state; Annuller restores original */}
+      {editingZone && (() => {
+        const current = zones.find((z) => z.id === editingZone.id);
+        return (
+          <ZoneForm
+            initial={editingZone}
+            showSubmit={false}
+            forcedWidthMm={current?.maxPhysicalWidthMm}
+            forcedHeightMm={current?.maxPhysicalHeightMm}
+            onChange={(meta) => {
+              if (!current) return;
+              onZoneUpdated({
+                ...current,
+                ...meta,
+                width:  Math.max(1, Math.round(meta.maxPhysicalWidthMm  / mmPerPxW)),
+                height: Math.max(1, Math.round(meta.maxPhysicalHeightMm / mmPerPxH)),
+              });
+            }}
+            onDone={() => {
+              setEditingZone(null);
+              setOriginalZone(null);
+              setSelectedZoneId(null);
+            }}
+            onCancel={() => {
+              if (originalZone) onZoneUpdated(originalZone);
+              setEditingZone(null);
+              setOriginalZone(null);
+              setSelectedZoneId(null);
+            }}
+          />
+        );
+      })()}
 
       {/* Actions for selected existing zone */}
       {selectedZoneId && !editingZone && !pendingZone && (
@@ -387,7 +433,7 @@ export function ZoneEditor({ product, zones, onZoneCreated, onZoneUpdated, onZon
             size="sm"
             onClick={() => {
               const zone = zones.find((z) => z.id === selectedZoneId);
-              if (zone) setEditingZone(zone);
+              if (zone) { setEditingZone(zone); setOriginalZone(zone); }
             }}
           >
             Rediger zone

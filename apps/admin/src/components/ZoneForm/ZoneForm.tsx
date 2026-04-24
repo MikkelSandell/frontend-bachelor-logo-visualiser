@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { PrintTechnique, PrintZone } from "@logo-visualizer/shared";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -22,35 +22,52 @@ const TECHNIQUE_LABELS: Record<PrintTechnique, string> = {
   pad_print: "Tampontryk",
 };
 
+type ZoneMeta = {
+  name: string;
+  maxPhysicalWidthMm: number;
+  maxPhysicalHeightMm: number;
+  allowedTechniques: PrintTechnique[];
+  maxColors: number;
+};
+
 interface Props {
   initial: Omit<PrintZone, "id">;
-  onSubmit: (meta: {
-    name: string;
-    maxPhysicalWidthMm: number;
-    maxPhysicalHeightMm: number;
-    allowedTechniques: PrintTechnique[];
-    maxColors: number;
-  }) => void;
+  onSubmit?: (meta: ZoneMeta) => void;
   onCancel: () => void;
   onDimensionsChange?: (widthMm: number, heightMm: number) => void;
+  onChange?: (meta: ZoneMeta) => void;
+  onDone?: () => void;
+  showSubmit?: boolean;
+  forcedWidthMm?: number;
+  forcedHeightMm?: number;
 }
 
-export function ZoneForm({ initial, onSubmit, onCancel, onDimensionsChange }: Props) {
+export function ZoneForm({ initial, onSubmit, onCancel, onDimensionsChange, onChange, onDone, showSubmit = true, forcedWidthMm, forcedHeightMm }: Props) {
   const [name, setName] = useState(initial.name);
   const [maxW, setMaxW] = useState(initial.maxPhysicalWidthMm);
   const [maxH, setMaxH] = useState(initial.maxPhysicalHeightMm);
   const [techniques, setTechniques] = useState<PrintTechnique[]>(initial.allowedTechniques);
   const [maxColors, setMaxColors] = useState(initial.maxColors);
 
+  // Keep mm inputs in sync when the canvas zone is resized externally
+  useEffect(() => { if (forcedWidthMm  !== undefined) setMaxW(forcedWidthMm);  }, [forcedWidthMm]);
+  useEffect(() => { if (forcedHeightMm !== undefined) setMaxH(forcedHeightMm); }, [forcedHeightMm]);
+
+  function emit(overrides: Partial<ZoneMeta> = {}) {
+    onChange?.({ name, maxPhysicalWidthMm: maxW, maxPhysicalHeightMm: maxH, allowedTechniques: techniques, maxColors, ...overrides });
+  }
+
   function toggleTechnique(t: PrintTechnique) {
-    setTechniques((prev) =>
-      prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
-    );
+    setTechniques((prev) => {
+      const next = prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t];
+      onChange?.({ name, maxPhysicalWidthMm: maxW, maxPhysicalHeightMm: maxH, allowedTechniques: next, maxColors });
+      return next;
+    });
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    onSubmit({ name, maxPhysicalWidthMm: maxW, maxPhysicalHeightMm: maxH, allowedTechniques: techniques, maxColors });
+    onSubmit?.({ name, maxPhysicalWidthMm: maxW, maxPhysicalHeightMm: maxH, allowedTechniques: techniques, maxColors });
   }
 
   return (
@@ -66,7 +83,7 @@ export function ZoneForm({ initial, onSubmit, onCancel, onDimensionsChange }: Pr
           id="zone-name"
           required
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => { setName(e.target.value); emit({ name: e.target.value }); }}
           placeholder="Zonenavnet"
         />
       </div>
@@ -83,6 +100,7 @@ export function ZoneForm({ initial, onSubmit, onCancel, onDimensionsChange }: Pr
               const v = Number(e.target.value);
               setMaxW(v);
               onDimensionsChange?.(v, maxH);
+              emit({ maxPhysicalWidthMm: v });
             }}
           />
         </div>
@@ -97,6 +115,7 @@ export function ZoneForm({ initial, onSubmit, onCancel, onDimensionsChange }: Pr
               const v = Number(e.target.value);
               setMaxH(v);
               onDimensionsChange?.(maxW, v);
+              emit({ maxPhysicalHeightMm: v });
             }}
           />
         </div>
@@ -129,16 +148,28 @@ export function ZoneForm({ initial, onSubmit, onCancel, onDimensionsChange }: Pr
           type="number"
           min={0}
           value={maxColors}
-          onChange={(e) => setMaxColors(Number(e.target.value))}
+          onChange={(e) => { const v = Number(e.target.value); setMaxColors(v); emit({ maxColors: v }); }}
           className="max-w-[120px]"
         />
       </div>
 
-      <div className="flex gap-2 pt-1">
-        <Button type="submit" size="sm">Gem zone</Button>
-        <Button type="button" variant="outline" size="sm" onClick={onCancel}>
-          Annuller
-        </Button>
+      <div className="space-y-2 pt-1">
+        <div className="flex gap-2">
+          {showSubmit && <Button type="submit" size="sm">Gem zone</Button>}
+          {onDone && (
+            <Button type="button" size="sm" onClick={onDone}>
+              Færdig
+            </Button>
+          )}
+          <Button type="button" variant="outline" size="sm" onClick={onCancel}>
+            Annuller
+          </Button>
+        </div>
+        {onDone && (
+          <p className="text-xs text-muted-foreground">
+            Ændringer gemmes først når du trykker på "Gem ændringer" nederst på siden.
+          </p>
+        )}
       </div>
     </form>
   );

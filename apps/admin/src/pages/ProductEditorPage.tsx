@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2, AlertCircle, Check } from "lucide-react";
+import { ArrowLeft, Loader2, AlertCircle, Check, Pencil, Trash2 } from "lucide-react";
 import type { Product, PrintZone } from "@logo-visualizer/shared";
-import { getMidoceanProduct, updateProduct, createZone, updateZone, deleteZone, fromZoneResponse } from "../api/productApi";
+import { getMidoceanProduct, createZone, updateZone, deleteZone, fromZoneResponse } from "../api/productApi";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
@@ -20,6 +20,8 @@ export function ProductEditorPage() {
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [success, setSuccess] = useState(false);
+  const [focusZoneId, setFocusZoneId] = useState<string | null>(null);
+  const [deletedZoneIds, setDeletedZoneIds] = useState<string[]>([]);
 
   // Load product on mount
   useEffect(() => {
@@ -28,6 +30,7 @@ export function ProductEditorPage() {
     // Reset state when ID changes
     setProduct(null);
     setZones([]);
+    setDeletedZoneIds([]);
     setLoading(true);
     setErrors([]);
     setSuccess(false);
@@ -59,87 +62,56 @@ export function ProductEditorPage() {
     };
   }, [success]);
 
-  async function handleSave() {
-    // Prevent double-click submissions
-    if (saving || !product) return;
+  // Zone handlers — local state only, nothing reaches the backend until handleSave
+  function handleZoneCreated(zone: Omit<PrintZone, "id">) {
+    setZones((prev) => [...prev, { id: `temp-${Date.now()}`, ...zone }]);
+  }
 
+  function handleZoneUpdated(zone: PrintZone) {
+    setZones((prev) => prev.map((z) => (z.id === zone.id ? zone : z)));
+  }
+
+  function handleZoneDeleted(zoneId: string) {
+    setZones((prev) => prev.filter((z) => z.id !== zoneId));
+    // Only real zones need a DELETE on the backend — temp zones never existed there
+    if (!zoneId.startsWith("temp-")) {
+      setDeletedZoneIds((prev) => [...prev, zoneId]);
+    }
+  }
+
+  async function handleSave() {
+    if (saving || !product) return;
     setSaving(true);
-    setErrors([]); // Clear previous errors
+    setErrors([]);
     setSuccess(false);
 
     try {
-      // Send full product with updated zones
-      const payload: Product = {
-        id: product.id,
-        title: product.title,
-        imageUrl: product.imageUrl,
-        imageWidth: product.imageWidth,
-        imageHeight: product.imageHeight,
-        printZones: zones,
-      };
-
-      const response = await updateProduct(product.id, payload);
-
-      // Treat backend response as source of truth
-      if (response.data) {
-        setProduct(response.data);
-        setZones([...response.data.printZones]); // Immutable copy
-        setErrors([]);
-        setSuccess(true);
+      // 1. Delete zones that were removed during this session
+      for (const id of deletedZoneIds) {
+        await deleteZone(product.id, id);
       }
-    } catch (err: unknown) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const axiosError = err as any;
-      const errorMessages = axiosError?.response?.data?.errors;
 
-      if (Array.isArray(errorMessages) && errorMessages.length > 0) {
-        setErrors(errorMessages);
-      } else {
-        setErrors(["Der opstod en fejl ved gemming. Prøv igen."]);
+      // 2. Create brand-new zones (those with temp IDs) and collect their real IDs
+      const newZones = zones.filter((z) => z.id.startsWith("temp-"));
+      const savedNew: PrintZone[] = [];
+      for (const zone of newZones) {
+        const saved = await createZone(product.id, zone);
+        savedNew.push(fromZoneResponse(saved, zone.imageUrl ?? product.imageUrl));
       }
-    } finally {
-      setSaving(false);
-    }
-  }
 
-  // Zone handlers — each saves to DB immediately
-  async function handleZoneCreated(zone: Omit<PrintZone, "id">) {
-    if (!product) return;
-    setSaving(true);
-    setErrors([]);
-    try {
-      const saved = await createZone(product.id, zone);
-      setZones((prev) => [...prev, fromZoneResponse(saved, zone.imageUrl ?? product.imageUrl)]);
+      // 3. Update zones that already existed in the DB
+      const existingZones = zones.filter((z) => !z.id.startsWith("temp-"));
+      for (const zone of existingZones) {
+        await updateZone(product.id, zone.id, zone);
+      }
+
+      setZones([...existingZones, ...savedNew]);
+      setDeletedZoneIds([]);
       setSuccess(true);
     } catch {
-      setErrors(["Zonen kunne ikke gemmes. Prøv igen."]);
+      setErrors(["Der opstod en fejl ved gemning. Prøv igen."]);
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function handleZoneUpdated(zone: PrintZone) {
-    if (!product) return;
-    setZones((prev) => prev.map((z) => (z.id === zone.id ? zone : z)));
-    setSaving(true);
-    setErrors([]);
-    try {
-      await updateZone(product.id, zone.id, zone);
-      setSuccess(true);
-    } catch {
-      setErrors(["Zonen kunne ikke opdateres. Prøv igen."]);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleZoneDeleted(zoneId: string) {
-    if (!product) return;
-    setZones((prev) => prev.filter((z) => z.id !== zoneId));
-    try {
-      await deleteZone(product.id, zoneId);
-    } catch {
-      setErrors(["Zonen kunne ikke slettes. Prøv igen."]);
     }
   }
 
@@ -211,9 +183,9 @@ export function ProductEditorPage() {
       {/* Zone Editor */}
       <Card>
         <CardHeader>
-          <CardTitle>Rediger print-zoner</CardTitle>
+          <CardTitle>Print-zoner</CardTitle>
           <CardDescription>
-            Tegn og rediger zoner direkte på produktbilledet.
+            Tegn en ny zone ved at klikke og trække på billedet. Klik på en eksisterende zone og tryk 'Rediger zone' for at ændre den.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -223,6 +195,8 @@ export function ProductEditorPage() {
             onZoneCreated={handleZoneCreated}
             onZoneUpdated={handleZoneUpdated}
             onZoneDeleted={handleZoneDeleted}
+            focusZoneId={focusZoneId}
+            onFocusConsumed={() => setFocusZoneId(null)}
           />
         </CardContent>
       </Card>
@@ -241,6 +215,7 @@ export function ProductEditorPage() {
                   <th className="text-left px-6 py-3 font-medium text-muted-foreground">Position (px)</th>
                   <th className="text-left px-6 py-3 font-medium text-muted-foreground">Maks. størrelse</th>
                   <th className="text-left px-6 py-3 font-medium text-muted-foreground">Teknikker</th>
+                  <th className="text-left px-6 py-3 font-medium text-muted-foreground">Handlinger</th>
                 </tr>
               </thead>
               <tbody>
@@ -263,6 +238,26 @@ export function ProductEditorPage() {
                             {t}
                           </Badge>
                         ))}
+                      </div>
+                    </td>
+                    <td className="px-6 py-3">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setFocusZoneId(z.id)}
+                        >
+                          <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                          Rediger
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleZoneDeleted(z.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                          Slet
+                        </Button>
                       </div>
                     </td>
                   </tr>
