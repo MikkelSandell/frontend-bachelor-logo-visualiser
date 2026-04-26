@@ -1,101 +1,42 @@
 import axios from "axios";
 import type { Product, PrintZone } from "@logo-visualizer/shared";
 
+const DEV_TOKEN_STORAGE_KEY = "logo-visualizer.admin.dev-token";
+
 const client = axios.create({
   baseURL: "http://localhost:5000/api",
   headers: { "Content-Type": "application/json" },
 });
 
-// ─── Midocean products (no DB — read from JSON) ───────────────────────────────
-
-export const getMidoceanProducts = () =>
-  client
-    .get<Product[]>("/midocean-products/as-products")
-    .then((r) => r.data);
-
-export const getMidoceanProduct = (masterCode: string) =>
-  client
-    .get<Product>(`/midocean-products/${masterCode}/as-product`)
-    .then((r) => r.data);
-
-// ─── DB-backed product CRUD (requires database — not available in current setup) ──
-
-export const getProducts = () =>
-  client.get<{ items: Product[]; total: number; page: number; pageSize: number }>("/products").then((r) => r.data);
-
-export const getProduct = (id: string) =>
-  client.get<{ data: Product; success: boolean }>(`/products/${id}`).then((r) => r.data);
-
-export const createProduct = (data: Omit<Product, "id" | "printZones">) =>
-  client.post<{ data: Product; success: boolean }>("/products", data).then((r) => r.data);
-
-export const updateProduct = (id: string, data: Partial<Omit<Product, "id">>) =>
-  client.put<{ data: Product; success: boolean }>(`/products/${id}`, data).then((r) => r.data);
-
-export const deleteProduct = (id: string) =>
-  client.delete(`/products/${id}`);
-
-export const uploadProductImage = (file: File) => {
-  const form = new FormData();
-  form.append("file", file);
-  return client
-    .post<{ data: { url: string; width: number; height: number }; success: boolean }>(
-      "/products/image", form, { headers: { "Content-Type": "multipart/form-data" } }
-    )
-    .then((r) => r.data);
+type ApiEnvelope<T> = {
+  data?: T;
+  items?: T[];
+  success?: boolean;
+  message?: string;
 };
 
-export const importProducts = (file: File) => {
-  const form = new FormData();
-  form.append("file", file);
-  return client
-    .post<{ data: Product[]; success: boolean }>("/products/import", form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    })
-    .then((r) => r.data);
+type ImportSummary = {
+  imported?: number;
+  productIds?: Array<string | number>;
 };
 
-export const exportProducts = async () => {
-  const resp = await client.get("/products/export", { responseType: "blob" });
-  const url = URL.createObjectURL(resp.data as Blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "products-export.json";
-  a.click();
-  URL.revokeObjectURL(url);
+const API_FILES_PREFIXES = [
+  "http://localhost:5000/api/files/",
+  "https://localhost:5000/api/files/",
+  "/api/files/",
+];
+
+export type ApiErrorPayload = {
+  messages: string[];
+  statusCode?: number;
 };
 
-// ─── Dev auth (Development only) ─────────────────────────────────────────────
+type TechniqueDto = {
+  name?: string;
+  id?: string | number;
+};
 
-let _token: string | null = null;
-
-async function ensureToken() {
-  if (_token) return;
-  try {
-    const res = await client.post<{ token: string }>("/auth/dev-token");
-    _token = res.data.token;
-    client.defaults.headers.common["Authorization"] = `Bearer ${_token}`;
-  } catch {
-    // No dev-token endpoint (production) — caller will get 401
-  }
-}
-
-// ─── Print zones ─────────────────────────────────────────────────────────────
-
-interface ZoneRequest {
-  name: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  maxPhysicalWidthMm: number;
-  maxPhysicalHeightMm: number;
-  maxColors: number;
-  imageUrl?: string;
-  allowedTechniqueNames: string[];
-}
-
-interface ZoneResponse {
+type ZoneUpsertPayload = {
   id: number;
   name: string;
   x: number;
@@ -104,59 +45,379 @@ interface ZoneResponse {
   height: number;
   maxPhysicalWidthMm: number;
   maxPhysicalHeightMm: number;
-  maxColors: number | null;
-  imageUrl?: string;
-  allowedTechniques: { id: number; name: string }[];
+  maxColors: number;
+  allowedTechniques: string[];
+};
+
+export type ProductUpsertPayload = {
+  id: string | number;
+  title: string;
+  imageUrl: string;
+  imageWidth: number;
+  imageHeight: number;
+  printZones: ZoneUpsertPayload[];
+};
+
+export type CreateProductPayload = {
+  title: string;
+  imageFile: File;
+  imageWidth: number;
+  imageHeight: number;
+};
+
+function readFromEnvelope<T>(payload: T | ApiEnvelope<T>): T {
+  const asEnvelope = payload as ApiEnvelope<T>;
+  if (asEnvelope && typeof asEnvelope === "object" && "data" in asEnvelope && asEnvelope.data !== undefined) {
+    return asEnvelope.data;
+  }
+  return payload as T;
 }
 
-function toRequest(zone: Omit<PrintZone, "id">): ZoneRequest {
+function normalizeImageUrl(imageUrl: unknown): string {
+  if (typeof imageUrl !== "string" || imageUrl.trim().length === 0) {
+    return "";
+  }
+
+  for (const prefix of API_FILES_PREFIXES) {
+    if (!imageUrl.startsWith(prefix)) {
+      continue;
+    }
+
+    const encodedPath = imageUrl.slice(prefix.length);
+    try {
+      const decodedPath = decodeURIComponent(encodedPath);
+      if (decodedPath.startsWith("http://") || decodedPath.startsWith("https://")) {
+        return decodedPath;
+      }
+    } catch {
+      // Keep original URL if decode fails.
+    }
+  }
+
+  return imageUrl;
+}
+
+function normalizeProduct(product: Product): Product {
+  const normalizedImageUrl = normalizeImageUrl(product.imageUrl);
+
   return {
+    ...product,
+    id: String(product.id),
+    imageUrl: normalizedImageUrl,
+    imageWidth: Number(product.imageWidth),
+    imageHeight: Number(product.imageHeight),
+    printZones: (product.printZones ?? []).map((zone) => ({
+      ...zone,
+      id: String(zone.id),
+      x: Number(zone.x),
+      y: Number(zone.y),
+      width: Number(zone.width),
+      height: Number(zone.height),
+      maxPhysicalWidthMm: Number(zone.maxPhysicalWidthMm),
+      maxPhysicalHeightMm: Number(zone.maxPhysicalHeightMm),
+      maxColors: Number(zone.maxColors ?? 0),
+      allowedTechniques: (zone.allowedTechniques ?? []) as PrintZone["allowedTechniques"],
+      imageUrl: normalizeImageUrl(zone.imageUrl ?? normalizedImageUrl),
+    })),
+  };
+}
+
+function applyToken(token: string) {
+  client.defaults.headers.common.Authorization = `Bearer ${token}`;
+}
+
+let cachedToken: string | null = null;
+
+function loadStoredToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(DEV_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeToken(token: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(DEV_TOKEN_STORAGE_KEY, token);
+  } catch {
+    // Ignore localStorage failures and keep token only in memory.
+  }
+}
+
+async function ensureToken() {
+  if (cachedToken) {
+    applyToken(cachedToken);
+    return;
+  }
+
+  const storedToken = loadStoredToken();
+  if (storedToken) {
+    cachedToken = storedToken;
+    applyToken(storedToken);
+    return;
+  }
+
+  const response = await client.post<{ token?: string } | ApiEnvelope<{ token: string }>>("/auth/dev-token");
+  const tokenPayload = readFromEnvelope(response.data as { token: string } | ApiEnvelope<{ token: string }>);
+  const token = tokenPayload.token;
+  if (!token) {
+    throw new Error("Kunne ikke hente admin token fra backend.");
+  }
+
+  cachedToken = token;
+  storeToken(token);
+  applyToken(token);
+}
+
+function toZoneUpsertPayload(zone: PrintZone): ZoneUpsertPayload {
+  const numericId = Number(zone.id);
+  const isNew = Number.isNaN(numericId) || zone.id.startsWith("temp-") || zone.id === "0";
+
+  return {
+    id: isNew ? 0 : numericId,
     name: zone.name,
-    x: zone.x,
-    y: zone.y,
-    width: zone.width,
-    height: zone.height,
-    maxPhysicalWidthMm: zone.maxPhysicalWidthMm,
-    maxPhysicalHeightMm: zone.maxPhysicalHeightMm,
-    maxColors: zone.maxColors,
-    imageUrl: zone.imageUrl,
-    allowedTechniqueNames: zone.allowedTechniques,
+    x: Math.round(zone.x),
+    y: Math.round(zone.y),
+    width: Math.round(zone.width),
+    height: Math.round(zone.height),
+    maxPhysicalWidthMm: Math.round(zone.maxPhysicalWidthMm),
+    maxPhysicalHeightMm: Math.round(zone.maxPhysicalHeightMm),
+    maxColors: Math.round(zone.maxColors),
+    allowedTechniques: [...(zone.allowedTechniques as string[])],
   };
 }
 
-export function fromZoneResponse(z: ZoneResponse, fallbackImageUrl: string): PrintZone {
+function toProductUpsertPayload(product: Product): ProductUpsertPayload {
+  const numericId = Number(product.id);
   return {
-    id: z.id.toString(),
-    name: z.name,
-    x: z.x,
-    y: z.y,
-    width: z.width,
-    height: z.height,
-    maxPhysicalWidthMm: Number(z.maxPhysicalWidthMm),
-    maxPhysicalHeightMm: Number(z.maxPhysicalHeightMm),
-    maxColors: z.maxColors ?? 0,
-    imageUrl: z.imageUrl ?? fallbackImageUrl,
-    allowedTechniques: z.allowedTechniques.map(
-      (t) => t.name.toLowerCase().replace(/ /g, "_") as PrintZone["allowedTechniques"][number]
-    ),
+    id: Number.isNaN(numericId) ? product.id : numericId,
+    title: product.title,
+    imageUrl: product.imageUrl,
+    imageWidth: Math.round(product.imageWidth),
+    imageHeight: Math.round(product.imageHeight),
+    printZones: (product.printZones ?? []).map(toZoneUpsertPayload),
   };
 }
 
-export const createZone = async (productId: string, zone: Omit<PrintZone, "id">) => {
-  await ensureToken();
-  return client
-    .post<ZoneResponse>(`/products/${productId}/zones`, toRequest(zone))
-    .then((r) => r.data);
-};
+export function parseApiError(error: unknown): ApiErrorPayload {
+  if (error instanceof Error && error.message) {
+    return { messages: [error.message], statusCode: undefined };
+  }
 
-export const updateZone = async (productId: string, zoneId: string, zone: Omit<PrintZone, "id">) => {
-  await ensureToken();
-  return client
-    .put(`/products/${productId}/zones/${zoneId}`, toRequest(zone))
-    .then((r) => r.data);
-};
+  if (!axios.isAxiosError(error)) {
+    return { messages: ["Ukendt fejl. Prøv igen."], statusCode: undefined };
+  }
 
-export const deleteZone = async (productId: string, zoneId: string) => {
+  const statusCode = error.response?.status;
+  const data = error.response?.data as
+    | undefined
+    | {
+        message?: string;
+        title?: string;
+        errors?: Record<string, string[] | string>;
+        detail?: string;
+      };
+
+  const messages: string[] = [];
+
+  if (data?.message) {
+    messages.push(data.message);
+  }
+
+  if (data?.title && data.title !== data.message) {
+    messages.push(data.title);
+  }
+
+  if (data?.detail) {
+    messages.push(data.detail);
+  }
+
+  if (data?.errors) {
+    for (const value of Object.values(data.errors)) {
+      if (Array.isArray(value)) {
+        messages.push(...value);
+      } else if (typeof value === "string") {
+        messages.push(value);
+      }
+    }
+  }
+
+  if (messages.length === 0 && error.message) {
+    messages.push(error.message);
+  }
+
+  if (messages.length === 0) {
+    messages.push("Anmodningen fejlede.");
+  }
+
+  return { messages: [...new Set(messages)], statusCode };
+}
+
+export async function getProducts(): Promise<Product[]> {
+  const response = await client.get<Product[] | ApiEnvelope<Product[]> | { items: Product[] }>("/products");
+  const payload = response.data;
+
+  if (Array.isArray(payload)) {
+    return payload.map(normalizeProduct);
+  }
+
+  if (payload && typeof payload === "object" && "items" in payload && Array.isArray(payload.items)) {
+    return (payload.items as Product[]).map(normalizeProduct);
+  }
+
+  const data = readFromEnvelope(payload as Product[] | ApiEnvelope<Product[]>);
+  return (data ?? []).map(normalizeProduct);
+}
+
+export async function getProduct(id: string): Promise<Product> {
+  const response = await client.get<Product | ApiEnvelope<Product>>(`/products/${id}`);
+  return normalizeProduct(readFromEnvelope(response.data));
+}
+
+export async function createProduct(payload: CreateProductPayload): Promise<Product> {
   await ensureToken();
-  return client.delete(`/products/${productId}/zones/${zoneId}`);
-};
+
+  const form = new FormData();
+  form.append("title", payload.title);
+  form.append("image", payload.imageFile);
+  form.append("file", payload.imageFile);
+  form.append("imageWidth", String(payload.imageWidth));
+  form.append("imageHeight", String(payload.imageHeight));
+
+  const response = await client.post<Product | ApiEnvelope<Product>>("/products", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+
+  return normalizeProduct(readFromEnvelope(response.data));
+}
+
+export async function updateProduct(id: string, product: Product): Promise<Product> {
+  await ensureToken();
+
+  const response = await client.put<Product | ApiEnvelope<Product>>(
+    `/products/${id}`,
+    toProductUpsertPayload(product)
+  );
+
+  return normalizeProduct(readFromEnvelope(response.data));
+}
+
+export async function deleteProduct(id: string): Promise<void> {
+  await ensureToken();
+  await client.delete(`/products/${id}`);
+}
+
+export async function getProductZones(productId: string): Promise<PrintZone[]> {
+  const response = await client.get<PrintZone[] | ApiEnvelope<PrintZone[]>>(`/products/${productId}/zones`);
+  const zones = readFromEnvelope(response.data) ?? [];
+  return zones.map((zone) => ({
+    ...zone,
+    id: String(zone.id),
+    x: Number(zone.x),
+    y: Number(zone.y),
+    width: Number(zone.width),
+    height: Number(zone.height),
+    maxPhysicalWidthMm: Number(zone.maxPhysicalWidthMm),
+    maxPhysicalHeightMm: Number(zone.maxPhysicalHeightMm),
+    maxColors: Number(zone.maxColors ?? 0),
+    allowedTechniques: (zone.allowedTechniques ?? []) as PrintZone["allowedTechniques"],
+  }));
+}
+
+export async function createZone(productId: string, zone: PrintZone): Promise<PrintZone> {
+  await ensureToken();
+  const payload = toZoneUpsertPayload(zone);
+  const response = await client.post<PrintZone | ApiEnvelope<PrintZone>>(`/products/${productId}/zones`, payload);
+  const saved = readFromEnvelope(response.data);
+  return {
+    ...saved,
+    id: String(saved.id),
+    imageUrl: saved.imageUrl ?? zone.imageUrl,
+  };
+}
+
+export async function updateZone(productId: string, zoneId: string, zone: PrintZone): Promise<PrintZone> {
+  await ensureToken();
+  const payload = toZoneUpsertPayload(zone);
+  const response = await client.put<PrintZone | ApiEnvelope<PrintZone>>(
+    `/products/${productId}/zones/${zoneId}`,
+    payload
+  );
+  const saved = readFromEnvelope(response.data);
+  return {
+    ...saved,
+    id: String(saved.id),
+    imageUrl: saved.imageUrl ?? zone.imageUrl,
+  };
+}
+
+export async function deleteZone(productId: string, zoneId: string): Promise<void> {
+  await ensureToken();
+  await client.delete(`/products/${productId}/zones/${zoneId}`);
+}
+
+export async function getTechniques(): Promise<string[]> {
+  const response = await client.get<string[] | TechniqueDto[] | ApiEnvelope<string[] | TechniqueDto[]>>("/techniques");
+  const payload = readFromEnvelope(response.data);
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+
+  return payload
+    .map((item) => {
+      if (typeof item === "string") return item;
+      return item.name;
+    })
+    .filter((name): name is string => Boolean(name));
+}
+
+export async function importProducts(file: File): Promise<Product[]> {
+  await ensureToken();
+
+  const form = new FormData();
+  form.append("file", file);
+
+  const response = await client.post<
+    Product[] | Product | ImportSummary | ApiEnvelope<Product[] | Product | ImportSummary>
+  >(
+    "/products/import",
+    form,
+    { headers: { "Content-Type": "multipart/form-data" } }
+  );
+
+  const payload = readFromEnvelope(response.data);
+
+  if (Array.isArray(payload)) {
+    return payload.map((product) => normalizeProduct(product));
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  const maybeSummary = payload as ImportSummary;
+  if (Array.isArray(maybeSummary.productIds)) {
+    const importedProducts = await Promise.all(
+      maybeSummary.productIds.map(async (id) => {
+        try {
+          return await getProduct(String(id));
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    return importedProducts.filter((product): product is Product => product !== null);
+  }
+
+  return [normalizeProduct(payload as Product)];
+}
+
+export async function exportProduct(productId: string): Promise<Blob> {
+  const response = await client.get(`/products/${productId}/export`, {
+    responseType: "blob",
+  });
+  return response.data as Blob;
+}
