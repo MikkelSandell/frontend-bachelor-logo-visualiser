@@ -24,11 +24,9 @@ frontend/
 │   │       ├── api/           # productApi.ts
 │   │       ├── components/
 │   │       │   ├── Layout/    # Top bar + nav layout
-│   │       │   ├── ZoneEditor/
-│   │       │   ├── ZoneForm/
-│   │       │   └── ui/        # button, card, input, badge, label
+│   │       │   └── ui/        # re-exports from @logo-visualizer/shared
 │   │       ├── lib/
-│   │       │   └── utils.ts   # cn() helper
+│   │       │   └── utils.ts   # re-exports cn() from @logo-visualizer/shared
 │   │       └── pages/
 │   └── viewer/         # Embeddable logo viewer for end users / salespeople
 │       └── src/
@@ -38,26 +36,30 @@ frontend/
 │           │   ├── ProductCanvas/
 │           │   ├── ZoneSelector/
 │           │   ├── TechniqueSelector/
-│           │   └── ui/        # button, card, badge
+│           │   └── ui/        # re-exports from @logo-visualizer/shared
 │           ├── lib/
-│           │   └── utils.ts   # cn() helper
+│           │   └── utils.ts   # re-exports cn() from @logo-visualizer/shared
 │           └── App.tsx        # Product picker → logo + canvas flow
 └── packages/
-    └── shared/         # Shared TypeScript types only (no runtime code)
+    └── shared/         # Domain types + shared UI components + cn() utility
+        └── src/
+            ├── index.ts             # single export barrel
+            ├── lib/
+            │   └── utils.ts         # cn() implementation
+            └── components/
+                └── ui/              # Button, Card, Badge, Input, Label
 ```
 
 ### Key files
 
 | Path | Purpose |
 |------|---------|
-| `packages/shared/src/index.ts` | Single source of truth for all domain types (`Product`, `PrintZone`, `PrintTechnique`, …) |
+| `packages/shared/src/index.ts` | Single export barrel — domain types (`Product`, `PrintZone`, `PrintTechnique`, …), `cn()` utility, and all shared UI components (`Button`, `Card`, `Badge`, `Input`, `Label`). |
+| `packages/shared/src/lib/utils.ts` | `cn()` implementation (clsx + tailwind-merge). Canonical source — both apps re-export from here. |
+| `packages/shared/src/components/ui/` | Canonical UI component implementations. Both apps' `src/components/ui/` files are thin re-exports from `@logo-visualizer/shared`. Both apps' `tailwind.config.ts` include `../../packages/shared/src/**/*.{ts,tsx}` so Tailwind scans these files. |
 | `apps/admin/src/api/productApi.ts` | All Admin → backend API calls. Includes `ensureToken()` which fetches a dev JWT on first write. All zone changes are batched and sent via `updateProduct()` (PUT with full product + zones list); individual `createZone`/`updateZone`/`deleteZone` also exist for direct use. `normalizeProduct()` normalises API responses, including mapping `allowedTechniques` from backend `{id, name}` objects to plain `PrintTechnique` strings. |
 | `apps/viewer/src/api/viewerApi.ts` | All Viewer → backend API calls — `getMidoceanProducts()`, `getMidoceanProduct()` |
-| `apps/admin/src/lib/utils.ts` | `cn()` — merges Tailwind classes via clsx + tailwind-merge |
-| `apps/viewer/src/lib/utils.ts` | Same `cn()` helper |
 | `apps/admin/src/pages/ProductEditorPage.tsx` | Full product editor. Inline Konva canvas: click-drag on background draws a new zone (auto-enters edit mode); clicking an existing zone selects/highlights it; "Rediger zone" button enters per-zone edit mode (only that zone draggable/resizable via Transformer). Inline zone form shows only while editing — fields: name, position px (X/Y), size px (Bredde/Højde), mm constraints, max colours, techniques. Product metadata (title, image) is collapsed behind "Rediger metadata" toggle. "Gem ændringer" saves everything via `updateProduct()`. "Slet produkt" deletes with confirmation and navigates back. |
-| `apps/admin/src/components/ZoneEditor/` | Component folder exists in the repo but zone drawing/editing is now handled inline in `ProductEditorPage` — this component is not actively used. |
-| `apps/admin/src/components/ZoneForm/` | Component folder exists in the repo but zone metadata editing is now handled inline in `ProductEditorPage` — this component is not actively used. |
 | `apps/viewer/src/components/ProductCanvas/` | Konva canvas for logo drag/scale/constrain (req V2–V6). Zone outlines are always visible (no logo required). Visible zones are grouped by side (front/back) based on `zone.name`, not image URL. Uses `zone.name` for arm/right-arm detection. Side switching (`viewedZoneId`) always resolves to a FRONT or BACK zone. |
 | `apps/viewer/src/components/ZoneSelector/` | Multi-select zone picker. First click activates a zone; second click (while focused) removes it; clicking an active-but-unfocused zone focuses it without removing it. |
 | `apps/viewer/src/web-component.ts` | Shadow DOM web component entry point (req V11 / NF1) |
