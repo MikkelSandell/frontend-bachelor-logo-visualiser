@@ -6,6 +6,7 @@ import { Layer, Image as KonvaImage, Rect, Stage, Text, Transformer } from "reac
 import Konva from "konva";
 import useImage from "use-image";
 import {
+  deleteProduct,
   exportProduct,
   getProduct,
   getTechniques,
@@ -105,6 +106,7 @@ export function ProductEditorPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [notFound, setNotFound] = useState(false);
@@ -379,6 +381,22 @@ export function ProductEditorPage() {
       setErrors(parseApiError(error).messages);
     } finally {
       setImporting(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!product || deleting) return;
+    if (!window.confirm(`Slet produktet "${product.title}"? Dette kan ikke fortrydes.`)) return;
+
+    setDeleting(true);
+    setErrors([]);
+
+    try {
+      await deleteProduct(product.id);
+      navigate("/");
+    } catch (error) {
+      setErrors(parseApiError(error).messages);
+      setDeleting(false);
     }
   }
 
@@ -906,12 +924,16 @@ export function ProductEditorPage() {
 
       <div className="fixed bottom-0 left-0 right-0 border-t border-border bg-background px-6 py-4">
         <div className="max-w-6xl mx-auto flex gap-2">
-          <Button onClick={handleSaveAll} disabled={saving} className="gap-2">
+          <Button onClick={handleSaveAll} disabled={saving || deleting} className="gap-2">
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             {saving ? "Gemmer..." : "Gem ændringer"}
           </Button>
-          <Button variant="outline" disabled={saving} onClick={() => navigate("/")}>
+          <Button variant="outline" disabled={saving || deleting} onClick={() => navigate("/")}>
             Tilbage til produkter
+          </Button>
+          <Button variant="destructive" onClick={handleDelete} disabled={saving || deleting} className="gap-2 ml-auto">
+            {deleting && <Loader2 className="h-4 w-4 animate-spin" />}
+            {deleting ? "Sletter..." : "Slet produkt"}
           </Button>
         </div>
       </div>
