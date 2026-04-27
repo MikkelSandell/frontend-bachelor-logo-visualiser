@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, Plus, Search, Upload } from "lucide-react";
+import { Download, Loader2, Plus, Search } from "lucide-react";
 import type { Product } from "@logo-visualizer/shared";
 import { getProducts, importProducts, parseApiError } from "../api/productApi";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -138,7 +138,7 @@ export function ProductsPage() {
             disabled={importing}
             className="gap-2"
           >
-            {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             Import JSON
           </Button>
 
