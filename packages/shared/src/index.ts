@@ -76,3 +76,22 @@ export interface LogoUploadResponse {
   originalName: string;
   mimeType: string;
 }
+
+// ─── UI utilities ────────────────────────────────────────────────────────────
+
+export { cn } from "./lib/utils";
+
+// ─── UI components ───────────────────────────────────────────────────────────
+
+export { Button, type ButtonProps } from "./components/ui/button";
+export {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+} from "./components/ui/card";
+export { Badge, type BadgeProps } from "./components/ui/badge";
+export { Input, type InputProps } from "./components/ui/input";
+export { Label } from "./components/ui/label";

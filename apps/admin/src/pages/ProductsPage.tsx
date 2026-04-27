@@ -12,30 +12,12 @@ type ProductWithStatus = Product & {
   status?: "FullyConfigured" | "MissingZones" | "MissingMetadata" | number | string;
 };
 
-type SetupStatus = "FullyConfigured" | "MissingZones" | "MissingMetadata";
-
-function normalizeSetupStatus(status: ProductWithStatus["status"]): SetupStatus | undefined {
-  if (status === undefined || status === null) {
-    return undefined;
-  }
-
-  if (status === "FullyConfigured" || status === "MissingZones" || status === "MissingMetadata") {
-    return status;
-  }
-
-  // Backend may send enum values as integers/strings.
-  if (status === 0 || status === "0") return "FullyConfigured";
-  if (status === 1 || status === "1") return "MissingZones";
-  if (status === 2 || status === "2") return "MissingMetadata";
-
-  return undefined;
-}
-
 function getProductStatus(product: Product): "FullyConfigured" | "MissingZones" | "MissingMetadata" {
-  const backendStatus = normalizeSetupStatus((product as ProductWithStatus).status);
-  if (backendStatus) {
-    return backendStatus;
-  }
+  // Backend may send the enum as a string name or as an integer index.
+  const raw = (product as ProductWithStatus).status;
+  if (raw === "FullyConfigured" || raw === 0 || raw === "0") return "FullyConfigured";
+  if (raw === "MissingZones"    || raw === 1 || raw === "1") return "MissingZones";
+  if (raw === "MissingMetadata" || raw === 2 || raw === "2") return "MissingMetadata";
 
   if (!product.title.trim() || !product.imageUrl || product.imageWidth <= 0 || product.imageHeight <= 0) {
     return "MissingMetadata";
