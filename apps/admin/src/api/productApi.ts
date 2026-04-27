@@ -116,7 +116,11 @@ function normalizeProduct(product: Product): Product {
       maxPhysicalWidthMm: Number(zone.maxPhysicalWidthMm),
       maxPhysicalHeightMm: Number(zone.maxPhysicalHeightMm),
       maxColors: Number(zone.maxColors ?? 0),
-      allowedTechniques: (zone.allowedTechniques ?? []) as PrintZone["allowedTechniques"],
+      allowedTechniques: (zone.allowedTechniques ?? []).map((t: unknown) => {
+        if (typeof t === "string") return t;
+        if (t && typeof t === "object" && "name" in t) return (t as { name: string }).name;
+        return null;
+      }).filter(Boolean) as PrintZone["allowedTechniques"],
       imageUrl: normalizeImageUrl(zone.imageUrl ?? normalizedImageUrl),
     })),
   };
@@ -322,7 +326,11 @@ export async function getProductZones(productId: string): Promise<PrintZone[]> {
     maxPhysicalWidthMm: Number(zone.maxPhysicalWidthMm),
     maxPhysicalHeightMm: Number(zone.maxPhysicalHeightMm),
     maxColors: Number(zone.maxColors ?? 0),
-    allowedTechniques: (zone.allowedTechniques ?? []) as PrintZone["allowedTechniques"],
+    allowedTechniques: (zone.allowedTechniques ?? []).map((t: unknown) => {
+      if (typeof t === "string") return t;
+      if (t && typeof t === "object" && "name" in t) return (t as { name: string }).name;
+      return null;
+    }).filter(Boolean) as PrintZone["allowedTechniques"],
   }));
 }
 
