@@ -431,11 +431,11 @@ export function ProductEditorPage() {
             }}
           />
           <Button variant="outline" onClick={() => document.getElementById("editor-import-input")?.click()} disabled={importing} className="gap-2">
-            {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             Import
           </Button>
           <Button variant="outline" onClick={handleExport} disabled={exporting} className="gap-2">
-            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             Export
           </Button>
         </div>
