@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { AlertCircle, ArrowLeft, Check, Download, Loader2, Upload } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, Download, Loader2, Pencil, Upload } from "lucide-react";
 import type { PrintZone, Product } from "@logo-visualizer/shared";
 import { Layer, Image as KonvaImage, Rect, Stage, Text, Transformer } from "react-konva";
 import Konva from "konva";
@@ -111,6 +111,10 @@ export function ProductEditorPage() {
 
   const [errors, setErrors] = useState<string[]>([]);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [showMetadata, setShowMetadata] = useState(false);
+
+  const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
+  const [drawPreview, setDrawPreview] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
   const [productImage] = useImage(product?.imageUrl ?? "");
   const transformerRef = useRef<Konva.Transformer | null>(null);
@@ -182,13 +186,13 @@ export function ProductEditorPage() {
   useEffect(() => {
     const transformer = transformerRef.current;
     if (!transformer) return;
-    if (selectedZoneId && zoneRectRefs.current[selectedZoneId]) {
-      transformer.nodes([zoneRectRefs.current[selectedZoneId] as Konva.Rect]);
+    if (editingZoneId && zoneRectRefs.current[editingZoneId]) {
+      transformer.nodes([zoneRectRefs.current[editingZoneId] as Konva.Rect]);
     } else {
       transformer.nodes([]);
     }
     transformer.getLayer()?.batchDraw();
-  }, [selectedZoneId, zones]);
+  }, [editingZoneId, zones]);
 
   function resetZoneDraft() {
     setEditingZoneId(null);
@@ -409,6 +413,10 @@ export function ProductEditorPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setShowMetadata((prev) => !prev)} className="gap-2">
+            <Pencil className="h-4 w-4" />
+            {showMetadata ? "Skjul metadata" : "Rediger metadata"}
+          </Button>
           <input
             id="editor-import-input"
             type="file"
@@ -461,17 +469,66 @@ export function ProductEditorPage() {
         <CardHeader>
           <CardTitle>Canvas</CardTitle>
           <CardDescription>
-            Træk og resize zoner direkte i canvas. Det opdaterer samme zone-state som formularen.
+            Klik og træk på billedet for at tegne en ny zone. Klik på en eksisterende zone for at vælge den, og tryk "Rediger zone" for at flytte/resize den.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-auto border rounded-md">
-            <Stage width={canvasWidth} height={canvasHeight}>
+          <div className="overflow-auto border rounded-md" style={{ cursor: drawStart ? "crosshair" : "default" }}>
+            <Stage
+              width={canvasWidth}
+              height={canvasHeight}
+              style={{ cursor: editingZoneId ? "default" : "crosshair" }}
+              onMouseDown={(e) => {
+                if (e.target !== e.target.getStage()) return;
+                resetZoneDraft();
+                setSelectedZoneId(null);
+                const pos = e.target.getStage()?.getPointerPosition();
+                if (pos) {
+                  setDrawStart({ x: pos.x, y: pos.y });
+                  setDrawPreview(null);
+                }
+              }}
+              onMouseMove={(e) => {
+                if (!drawStart) return;
+                const pos = e.target.getStage()?.getPointerPosition();
+                if (!pos) return;
+                setDrawPreview({
+                  x: Math.min(drawStart.x, pos.x),
+                  y: Math.min(drawStart.y, pos.y),
+                  width: Math.abs(pos.x - drawStart.x),
+                  height: Math.abs(pos.y - drawStart.y),
+                });
+              }}
+              onMouseUp={() => {
+                if (!drawStart) return;
+                setDrawStart(null);
+                const preview = drawPreview;
+                setDrawPreview(null);
+                if (!preview || preview.width < 10 || preview.height < 10) return;
+                const newZone: PrintZone = {
+                  id: `temp-${Date.now()}`,
+                  name: "",
+                  x: Math.round(preview.x / canvasScale),
+                  y: Math.round(preview.y / canvasScale),
+                  width: Math.round(preview.width / canvasScale),
+                  height: Math.round(preview.height / canvasScale),
+                  maxPhysicalWidthMm: 100,
+                  maxPhysicalHeightMm: 100,
+                  maxColors: 0,
+                  allowedTechniques: [],
+                  imageUrl: product.imageUrl,
+                };
+                setZones((prev) => [...prev, newZone]);
+                setSelectedZoneId(newZone.id);
+                handleZoneEdit(newZone);
+              }}
+            >
               <Layer>
                 {productImage && <KonvaImage image={productImage} width={canvasWidth} height={canvasHeight} listening={false} />}
 
                 {zones.map((zone) => {
                   const isSelected = zone.id === selectedZoneId;
+                  const isEditing = zone.id === editingZoneId;
                   return (
                     <Rect
                       key={zone.id}
@@ -482,13 +539,15 @@ export function ProductEditorPage() {
                       y={zone.y * canvasScale}
                       width={zone.width * canvasScale}
                       height={zone.height * canvasScale}
-                      stroke={isSelected ? "#0057ff" : "#ff6633"}
-                      strokeWidth={2}
-                      fill={isSelected ? "rgba(0,87,255,0.08)" : "rgba(255,102,51,0.12)"}
-                      draggable
+                      stroke={isEditing ? "#0057ff" : isSelected ? "#0057ff" : "#ff6633"}
+                      strokeWidth={isSelected || isEditing ? 2.5 : 2}
+                      fill={isEditing ? "rgba(0,87,255,0.08)" : isSelected ? "rgba(0,87,255,0.05)" : "rgba(255,102,51,0.12)"}
+                      draggable={isEditing}
                       onClick={() => {
+                        if (editingZoneId && editingZoneId !== zone.id) {
+                          resetZoneDraft();
+                        }
                         setSelectedZoneId(zone.id);
-                        handleZoneEdit(zone);
                       }}
                       onDragEnd={(event) => {
                         const next = clampRectToImage(
@@ -526,6 +585,20 @@ export function ProductEditorPage() {
                   />
                 ))}
 
+                {drawPreview && drawPreview.width > 0 && drawPreview.height > 0 && (
+                  <Rect
+                    x={drawPreview.x}
+                    y={drawPreview.y}
+                    width={drawPreview.width}
+                    height={drawPreview.height}
+                    stroke="#0057ff"
+                    strokeWidth={1.5}
+                    fill="rgba(0,87,255,0.08)"
+                    dash={[6, 3]}
+                    listening={false}
+                  />
+                )}
+
                 <Transformer
                   ref={transformerRef}
                   keepRatio={false}
@@ -551,234 +624,263 @@ export function ProductEditorPage() {
               </Layer>
             </Stage>
           </div>
+
+          {selectedZoneId && !editingZoneId && (
+            <div className="mt-3 flex items-center gap-3 rounded-md border px-3 py-2">
+              <span className="text-sm font-medium">{zones.find((z) => z.id === selectedZoneId)?.name}</span>
+              <Button
+                size="sm"
+                onClick={() => {
+                  const zone = zones.find((z) => z.id === selectedZoneId);
+                  if (zone) handleZoneEdit(zone);
+                }}
+              >
+                Rediger zone
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setSelectedZoneId(null)}>
+                Fravælg
+              </Button>
+            </div>
+          )}
+
+          {editingZoneId && (
+            <div className="mt-3 flex items-center gap-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2">
+              <span className="text-sm font-medium text-blue-800">
+                Redigerer: {zones.find((z) => z.id === editingZoneId)?.name}
+              </span>
+              <Button size="sm" variant="outline" onClick={resetZoneDraft}>
+                Færdig
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Produktmetadata</CardTitle>
-          <CardDescription>Metadata gemmes sammen med alle zoner i Save All.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1.5 md:col-span-2">
-            <Label htmlFor="product-title">Titel</Label>
-            <Input id="product-title" value={title} onChange={(event) => setTitle(event.target.value)} />
-          </div>
+      {showMetadata && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Produktmetadata</CardTitle>
+            <CardDescription>Metadata gemmes sammen med alle zoner i Save All.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5 md:col-span-2">
+              <Label htmlFor="product-title">Titel</Label>
+              <Input id="product-title" value={title} onChange={(event) => setTitle(event.target.value)} />
+            </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="product-width">Billedbredde (px)</Label>
-            <Input id="product-width" value={product.imageWidth} disabled />
-          </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="product-width">Billedbredde (px)</Label>
+              <Input id="product-width" value={product.imageWidth} disabled />
+            </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="product-height">Billedhøjde (px)</Label>
-            <Input id="product-height" value={product.imageHeight} disabled />
-          </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="product-height">Billedhøjde (px)</Label>
+              <Input id="product-height" value={product.imageHeight} disabled />
+            </div>
 
-          <div className="space-y-1.5 md:col-span-2">
-            <Label htmlFor="product-image-url">Image URL</Label>
-            <Input id="product-image-url" value={product.imageUrl} disabled />
-          </div>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label htmlFor="product-image-url">Image URL</Label>
+              <Input id="product-image-url" value={product.imageUrl} disabled />
+            </div>
 
-          <div className="md:col-span-2 border rounded-md bg-muted/20 p-3 max-w-sm">
-            <img src={product.imageUrl} alt={product.title} className="w-full h-auto object-contain" />
-          </div>
-        </CardContent>
-      </Card>
+            <div className="md:col-span-2 border rounded-md bg-muted/20 p-3 max-w-sm">
+              <img src={product.imageUrl} alt={product.title} className="w-full h-auto object-contain" />
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>{editingZoneId ? "Rediger zone" : "Tilføj zone"}</CardTitle>
-            <CardDescription>CRUD i formular. Canvas-interaktion kan udvides bagefter.</CardDescription>
+            <CardTitle>Zone-egenskaber</CardTitle>
+            <CardDescription>
+              {editingZoneId
+                ? "Rediger egenskaber for den valgte zone."
+                : "Tegn en ny zone på billedet, eller klik på en eksisterende zone og tryk \"Rediger zone\"."}
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleZoneSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="zone-name">Navn</Label>
-                <Input
-                  id="zone-name"
-                  value={zoneDraft.name}
-                  onChange={(event) => {
-                    const name = event.target.value;
-                    setZoneDraft((prev) => ({ ...prev, name }));
-                    if (editingZoneId) {
+            {!editingZoneId ? (
+              <p className="text-sm text-muted-foreground">Ingen zone valgt.</p>
+            ) : (
+              <form onSubmit={handleZoneSubmit} className="space-y-5">
+                {/* Name */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="zone-name">Navn</Label>
+                  <Input
+                    id="zone-name"
+                    value={zoneDraft.name}
+                    placeholder="fx. Forside, Ryg, Venstre ærme…"
+                    onChange={(event) => {
+                      const name = event.target.value;
+                      setZoneDraft((prev) => ({ ...prev, name }));
                       setZones((prev) => prev.map((zone) => (zone.id === editingZoneId ? { ...zone, name } : zone)));
-                    }
-                  }}
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="zone-x">x</Label>
-                  <Input
-                    id="zone-x"
-                    type="number"
-                    value={zoneDraft.x}
-                    onFocus={(event) => event.currentTarget.select()}
-                    onChange={(event) => {
-                      const x = Number(event.target.value);
-                      setZoneDraft((prev) => ({ ...prev, x }));
-                      if (editingZoneId) {
-                        updateZoneGeometry(editingZoneId, {
-                          x,
-                          y: zoneDraft.y,
-                          width: zoneDraft.width,
-                          height: zoneDraft.height,
-                        });
-                      }
                     }}
                     required
                   />
                 </div>
+
+                {/* Position */}
                 <div className="space-y-1.5">
-                  <Label htmlFor="zone-y">y</Label>
+                  <Label>Position (px)</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground">X</span>
+                      <Input
+                        id="zone-x"
+                        type="number"
+                        value={zoneDraft.x}
+                        onFocus={(event) => event.currentTarget.select()}
+                        onChange={(event) => {
+                          const x = Number(event.target.value);
+                          setZoneDraft((prev) => ({ ...prev, x }));
+                          updateZoneGeometry(editingZoneId, { x, y: zoneDraft.y, width: zoneDraft.width, height: zoneDraft.height });
+                        }}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground">Y</span>
+                      <Input
+                        id="zone-y"
+                        type="number"
+                        value={zoneDraft.y}
+                        onFocus={(event) => event.currentTarget.select()}
+                        onChange={(event) => {
+                          const y = Number(event.target.value);
+                          setZoneDraft((prev) => ({ ...prev, y }));
+                          updateZoneGeometry(editingZoneId, { x: zoneDraft.x, y, width: zoneDraft.width, height: zoneDraft.height });
+                        }}
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Size */}
+                <div className="space-y-1.5">
+                  <Label>Størrelse (px)</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground">Bredde</span>
+                      <Input
+                        id="zone-width"
+                        type="number"
+                        min={1}
+                        value={zoneDraft.width}
+                        onFocus={(event) => event.currentTarget.select()}
+                        onChange={(event) => {
+                          const width = Number(event.target.value);
+                          setZoneDraft((prev) => ({ ...prev, width }));
+                          updateZoneGeometry(editingZoneId, { x: zoneDraft.x, y: zoneDraft.y, width, height: zoneDraft.height });
+                        }}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground">Højde</span>
+                      <Input
+                        id="zone-height"
+                        type="number"
+                        min={1}
+                        value={zoneDraft.height}
+                        onFocus={(event) => event.currentTarget.select()}
+                        onChange={(event) => {
+                          const height = Number(event.target.value);
+                          setZoneDraft((prev) => ({ ...prev, height }));
+                          updateZoneGeometry(editingZoneId, { x: zoneDraft.x, y: zoneDraft.y, width: zoneDraft.width, height });
+                        }}
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Max colors */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="zone-max-colors">Maks farver <span className="text-muted-foreground font-normal">(0 = ubegrænset)</span></Label>
                   <Input
-                    id="zone-y"
+                    id="zone-max-colors"
                     type="number"
-                    value={zoneDraft.y}
+                    min={0}
+                    value={zoneDraft.maxColors}
                     onFocus={(event) => event.currentTarget.select()}
-                    onChange={(event) => {
-                      const y = Number(event.target.value);
-                      setZoneDraft((prev) => ({ ...prev, y }));
-                      if (editingZoneId) {
-                        updateZoneGeometry(editingZoneId, {
-                          x: zoneDraft.x,
-                          y,
-                          width: zoneDraft.width,
-                          height: zoneDraft.height,
-                        });
-                      }
-                    }}
+                    onChange={(event) => setZoneDraft((prev) => ({ ...prev, maxColors: Number(event.target.value) }))}
                     required
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="zone-width">width</Label>
-                  <Input
-                    id="zone-width"
-                    type="number"
-                    min={1}
-                    value={zoneDraft.width}
-                    onFocus={(event) => event.currentTarget.select()}
-                    onChange={(event) => {
-                      const width = Number(event.target.value);
-                      setZoneDraft((prev) => ({ ...prev, width }));
-                      if (editingZoneId) {
-                        updateZoneGeometry(editingZoneId, {
-                          x: zoneDraft.x,
-                          y: zoneDraft.y,
-                          width,
-                          height: zoneDraft.height,
-                        });
-                      }
-                    }}
-                    required
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="zone-height">height</Label>
-                  <Input
-                    id="zone-height"
-                    type="number"
-                    min={1}
-                    value={zoneDraft.height}
-                    onFocus={(event) => event.currentTarget.select()}
-                    onChange={(event) => {
-                      const height = Number(event.target.value);
-                      setZoneDraft((prev) => ({ ...prev, height }));
-                      if (editingZoneId) {
-                        updateZoneGeometry(editingZoneId, {
-                          x: zoneDraft.x,
-                          y: zoneDraft.y,
-                          width: zoneDraft.width,
-                          height,
-                        });
-                      }
-                    }}
-                    required
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="zone-mm-width">maxPhysicalWidthMm</Label>
-                  <Input id="zone-mm-width" type="number" min={1} value={zoneDraft.maxPhysicalWidthMm} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setZoneDraft((prev) => ({ ...prev, maxPhysicalWidthMm: Number(event.target.value) }))} required />
+                {/* Techniques */}
+                <div className="space-y-2">
+                  <Label>Tilladte teknikker</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {knownTechniques.length === 0 ? (
+                      <p className="text-sm text-muted-foreground col-span-2">Ingen teknikker tilgængelige.</p>
+                    ) : (
+                      knownTechniques.map((technique) => (
+                        <label key={technique} className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={zoneDraft.allowedTechniques.includes(technique)}
+                            onChange={(event) => {
+                              setZoneDraft((prev) => {
+                                const next = event.target.checked
+                                  ? [...prev.allowedTechniques, technique]
+                                  : prev.allowedTechniques.filter((value) => value !== technique);
+                                return { ...prev, allowedTechniques: next };
+                              });
+                            }}
+                          />
+                          {technique}
+                        </label>
+                      ))
+                    )}
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="zone-mm-height">maxPhysicalHeightMm</Label>
-                  <Input id="zone-mm-height" type="number" min={1} value={zoneDraft.maxPhysicalHeightMm} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setZoneDraft((prev) => ({ ...prev, maxPhysicalHeightMm: Number(event.target.value) }))} required />
-                </div>
-              </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="zone-max-colors">maxColors</Label>
-                <Input id="zone-max-colors" type="number" min={0} value={zoneDraft.maxColors} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setZoneDraft((prev) => ({ ...prev, maxColors: Number(event.target.value) }))} required />
-              </div>
-
-              <div className="space-y-2">
-                <Label>allowedTechniques</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {knownTechniques.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Ingen teknikker hentet endnu.</p>
-                  ) : (
-                    knownTechniques.map((technique) => (
-                      <label key={technique} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={zoneDraft.allowedTechniques.includes(technique)}
-                          onChange={(event) => {
-                            setZoneDraft((prev) => {
-                              const next = event.target.checked
-                                ? [...prev.allowedTechniques, technique]
-                                : prev.allowedTechniques.filter((value) => value !== technique);
-                              return { ...prev, allowedTechniques: next };
-                            });
-                          }}
-                        />
-                        {technique}
-                      </label>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Button type="submit">{editingZoneId ? "Opdater zone" : "Tilføj zone"}</Button>
-                {editingZoneId && (
+                <div className="flex items-center gap-2 pt-1">
+                  <Button type="submit">Gem zone</Button>
                   <Button type="button" variant="outline" onClick={resetZoneDraft}>
-                    Annuller redigering
+                    Annuller
                   </Button>
-                )}
-              </div>
-            </form>
+                </div>
+              </form>
+            )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
             <CardTitle>Zoner ({zones.length})</CardTitle>
-            <CardDescription>Zoner gemmes først i backend når du trykker Save All.</CardDescription>
+            <CardDescription>Zoner gemmes til backend når du trykker "Gem ændringer".</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {zones.length === 0 && <p className="text-sm text-muted-foreground">Ingen zoner endnu.</p>}
+            {zones.length === 0 && <p className="text-sm text-muted-foreground">Ingen zoner endnu. Tegn en zone på billedet ovenfor.</p>}
 
             {zones.map((zone) => (
-              <div key={zone.id} className="rounded-md border p-3 space-y-2">
+              <div
+                key={zone.id}
+                className={`rounded-md border p-3 space-y-1.5 transition-colors ${zone.id === editingZoneId ? "border-blue-300 bg-blue-50" : ""}`}
+              >
                 <div className="flex items-center justify-between gap-2">
-                  <p className="font-medium">{zone.name}</p>
+                  <p className="font-medium">{zone.name || <span className="text-muted-foreground italic">(uden navn)</span>}</p>
                   <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={() => handleZoneEdit(zone)}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedZoneId(zone.id);
+                        handleZoneEdit(zone);
+                      }}
+                    >
                       Rediger
                     </Button>
                     <Button
                       size="sm"
                       variant="destructive"
                       onClick={() => {
-                        if (window.confirm(`Slet zonen \"${zone.name}\"?`)) {
+                        if (window.confirm(`Slet zonen "${zone.name || "(uden navn)"}"?`)) {
                           handleZoneDelete(zone.id);
                         }
                       }}
@@ -788,13 +890,13 @@ export function ProductEditorPage() {
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  x={zone.x}, y={zone.y}, width={zone.width}, height={zone.height}
+                  Position: x={zone.x}, y={zone.y} &nbsp;·&nbsp; Størrelse: {zone.width}×{zone.height} px
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  maxPhysicalWidthMm={zone.maxPhysicalWidthMm}, maxPhysicalHeightMm={zone.maxPhysicalHeightMm}, maxColors={zone.maxColors}
+                  Fysisk: {zone.maxPhysicalWidthMm}×{zone.maxPhysicalHeightMm} mm &nbsp;·&nbsp; Farver: {zone.maxColors || "∞"}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  allowedTechniques: {(zone.allowedTechniques as string[]).join(", ") || "Ingen"}
+                  Teknikker: {(zone.allowedTechniques as string[]).join(", ") || "Ingen"}
                 </p>
               </div>
             ))}
@@ -806,7 +908,7 @@ export function ProductEditorPage() {
         <div className="max-w-6xl mx-auto flex gap-2">
           <Button onClick={handleSaveAll} disabled={saving} className="gap-2">
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            {saving ? "Gemmer..." : "Save All"}
+            {saving ? "Gemmer..." : "Gem ændringer"}
           </Button>
           <Button variant="outline" disabled={saving} onClick={() => navigate("/")}>
             Tilbage til produkter
