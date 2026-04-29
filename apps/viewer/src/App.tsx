@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import type { Product } from "@logo-visualizer/shared";
+import type { LogoEntry } from "./types";
 import { getMidoceanProducts, getMidoceanProduct } from "./api/viewerApi";
 import { LogoUploader } from "./components/LogoUploader/LogoUploader";
+import { LogoPicker } from "./components/LogoPicker/LogoPicker";
 import { ProductCanvas } from "./components/ProductCanvas/ProductCanvas";
 import { ZoneSelector } from "./components/ZoneSelector/ZoneSelector";
 import { TechniqueSelector } from "./components/TechniqueSelector/TechniqueSelector";
@@ -21,13 +23,22 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
   const [search, setSearch] = useState("");
 
   const [product, setProduct] = useState<Product | null>(null);
-  const [logoUrl, setLogoUrl] = useState<string | undefined>(preloadedLogo);
-  const [logoId, setLogoId] = useState<string | null>(null);
-  /** Zones that have a logo placed on them */
+
+  /** All uploaded logos for the current session. */
+  const [logos, setLogos] = useState<LogoEntry[]>(() =>
+    preloadedLogo
+      ? [{ id: "preloaded", url: preloadedLogo, name: "Forudindlæst logo" }]
+      : []
+  );
+
+  /** Maps zoneId → logoId (which logo is placed in which zone). */
+  const [zoneLogoAssignments, setZoneLogoAssignments] = useState<Record<string, string>>({});
+
+  /** Zones that have been activated (show outline + logo if assigned). */
   const [activeZoneIds, setActiveZoneIds] = useState<string[]>([]);
-  /** Which active zone is currently selected for editing */
+  /** Which active zone is currently selected for editing. */
   const [focusedZoneId, setFocusedZoneId] = useState<string | null>(null);
-  /** Which zone's image is displayed in the canvas */
+  /** Which zone's image is displayed in the canvas (FRONT or BACK side). */
   const [viewedZoneId, setViewedZoneId] = useState<string | null>(null);
 
   const focusedZone = product?.printZones.find((z) => z.id === focusedZoneId) ?? null;
@@ -44,6 +55,11 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
         setProduct(p);
         const frontZone = p.printZones.find((z) => /^front$/i.test(z.name));
         setViewedZoneId(frontZone?.id ?? p.printZones[0]?.id ?? null);
+        // Auto-activate single zone for single-zone products
+        if (p.printZones.length === 1) {
+          setActiveZoneIds([p.printZones[0].id]);
+          setFocusedZoneId(p.printZones[0].id);
+        }
       });
     }
   }, [preloadedProductId]);
@@ -60,28 +76,81 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
 
   function handleSelectProduct(p: Product) {
     setProduct(p);
-    setActiveZoneIds([]);
-    setFocusedZoneId(null);
+    setZoneLogoAssignments({});
+    // For single-zone products, auto-activate the only zone so it is immediately
+    // ready to receive a logo without needing the ZoneSelector.
+    const singleZoneId = p.printZones.length === 1 ? p.printZones[0].id : null;
+    setActiveZoneIds(singleZoneId ? [singleZoneId] : []);
+    setFocusedZoneId(singleZoneId);
     const frontZone = p.printZones.find((z) => /^front$/i.test(z.name));
     setViewedZoneId(frontZone?.id ?? p.printZones[0]?.id ?? null);
   }
 
-  /** Activate an inactive zone and focus it */
+  /** Activate an inactive zone and focus it. */
   function handleZoneToggle(id: string) {
     setActiveZoneIds((prev) => [...prev, id]);
     setFocusedZoneId(id);
     setViewedZoneId(toSideZoneId(id, product!));
+    // Auto-assign when there is exactly one logo — no picker needed.
+    if (logos.length === 1) {
+      setZoneLogoAssignments((prev) => ({ ...prev, [id]: logos[0].id }));
+    }
   }
 
-  /** Remove a zone's logo entirely */
+  /** Remove a zone's logo entirely. */
   function handleZoneDeactivate(id: string) {
     setActiveZoneIds((prev) => prev.filter((z) => z !== id));
+    setZoneLogoAssignments((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     if (focusedZoneId === id) {
       const remaining = activeZoneIds.filter((z) => z !== id);
       const next = remaining[0] ?? null;
       setFocusedZoneId(next);
       if (next) setViewedZoneId(toSideZoneId(next, product!));
     }
+  }
+
+  /** Called when a new logo has been uploaded. */
+  function handleLogoUploaded(logo: LogoEntry) {
+    setLogos((prev) => [...prev, logo]);
+    // First logo: assign to every currently active zone that has no assignment yet.
+    if (logos.length === 0) {
+      setZoneLogoAssignments((prev) => {
+        const next = { ...prev };
+        for (const zoneId of activeZoneIds) {
+          if (!next[zoneId]) next[zoneId] = logo.id;
+        }
+        return next;
+      });
+    }
+  }
+
+  /** Remove a logo from the library and clear all zone assignments that used it. */
+  function handleLogoRemoved(id: string) {
+    const remainingLogos = logos.filter((l) => l.id !== id);
+    setLogos(remainingLogos);
+
+    setZoneLogoAssignments((prev) => {
+      const next: Record<string, string> = {};
+      for (const [zoneId, logoId] of Object.entries(prev)) {
+        if (logoId !== id) {
+          next[zoneId] = logoId;
+        } else if (remainingLogos.length === 1) {
+          // One logo remains — auto-assign it to the now-empty zone.
+          next[zoneId] = remainingLogos[0].id;
+        }
+        // else: zone loses its logo; user must re-assign via LogoPicker.
+      }
+      return next;
+    });
+  }
+
+  /** Assign a specific logo to a specific zone. */
+  function handleAssignLogo(zoneId: string, logoId: string) {
+    setZoneLogoAssignments((prev) => ({ ...prev, [zoneId]: logoId }));
   }
 
   return (
@@ -140,7 +209,8 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                             <CardContent className="p-2">
                               <p className="text-xs font-medium truncate">{p.title}</p>
                               <p className="text-xs text-muted-foreground">
-                                {p.printZones.length} {p.printZones.length === 1 ? "zone" : "zoner"}
+                                {p.printZones.length}{" "}
+                                {p.printZones.length === 1 ? "zone" : "zoner"}
                               </p>
                             </CardContent>
                           </Card>
@@ -158,23 +228,46 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
           <div className="space-y-4">
             <button
               className="text-sm text-primary hover:underline"
-              onClick={() => { setProduct(null); setLogoUrl(undefined); setActiveZoneIds([]); setFocusedZoneId(null); }}
+              onClick={() => {
+                setProduct(null);
+                setActiveZoneIds([]);
+                setFocusedZoneId(null);
+                setZoneLogoAssignments({});
+                // Logos are preserved — the user may want to apply them to another product.
+              }}
             >
               ← Vælg andet produkt
             </button>
 
-            {/* V1 – logo upload */}
-            <LogoUploader preloadedUrl={preloadedLogo} onLogoReady={(url, id) => { setLogoUrl(url); setLogoId(id); }} />
+            {/* V1 – logo library (upload one or more logos) */}
+            <LogoUploader
+              logos={logos}
+              onLogoUploaded={handleLogoUploaded}
+              onLogoRemoved={handleLogoRemoved}
+            />
 
-            {/* V3 – zone multi-selector */}
+            {/* V3 – zone multi-selector (hidden for single-zone products) */}
             {product.printZones.length > 1 && (
               <ZoneSelector
                 zones={product.printZones}
                 activeZoneIds={activeZoneIds}
                 focusedZoneId={focusedZoneId}
                 onActivate={handleZoneToggle}
-                onFocus={(id) => { setFocusedZoneId(id); setViewedZoneId(toSideZoneId(id, product!)); }}
+                onFocus={(id) => {
+                  setFocusedZoneId(id);
+                  setViewedZoneId(toSideZoneId(id, product!));
+                }}
                 onDeactivate={handleZoneDeactivate}
+              />
+            )}
+
+            {/* Logo picker — shown when multiple logos exist and a zone is focused */}
+            {logos.length > 1 && focusedZoneId && focusedZone && (
+              <LogoPicker
+                logos={logos}
+                zone={focusedZone}
+                assignedLogoId={zoneLogoAssignments[focusedZoneId] ?? null}
+                onAssign={(logoId) => handleAssignLogo(focusedZoneId, logoId)}
               />
             )}
 
@@ -184,39 +277,39 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                 /^(front|back)$/i.test(z.name)
               );
               return sides.length > 1 ? (
-              <div className="space-y-1.5">
-                <p className="text-sm font-medium text-muted-foreground">Se side</p>
-                <div className="flex flex-wrap gap-2">
-                  {sides.map((z) => (
-                    <button
-                      key={z.id}
-                      onClick={() => setViewedZoneId(z.id)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-md text-sm border transition-colors",
-                        viewedZoneId === z.id
-                          ? "bg-muted border-foreground/30 font-medium"
-                          : "bg-background text-muted-foreground border-input hover:bg-muted"
-                      )}
-                    >
-                      {z.name}
-                      {activeZoneIds.includes(z.id) && (
-                        <span
-                          className="ml-1.5 inline-block w-2 h-2 rounded-full bg-primary align-middle"
-                          title="Logo placeret på denne side"
-                        />
-                      )}
-                    </button>
-                  ))}
+                <div className="space-y-1.5">
+                  <p className="text-sm font-medium text-muted-foreground">Se side</p>
+                  <div className="flex flex-wrap gap-2">
+                    {sides.map((z) => (
+                      <button
+                        key={z.id}
+                        onClick={() => setViewedZoneId(z.id)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-md text-sm border transition-colors",
+                          viewedZoneId === z.id
+                            ? "bg-muted border-foreground/30 font-medium"
+                            : "bg-background text-muted-foreground border-input hover:bg-muted"
+                        )}
+                      >
+                        {z.name}
+                        {activeZoneIds.includes(z.id) && (
+                          <span
+                            className="ml-1.5 inline-block w-2 h-2 rounded-full bg-primary align-middle"
+                            title="Logo placeret på denne side"
+                          />
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
               ) : null;
             })()}
 
             {/* V2-V6 – main canvas */}
             <ProductCanvas
               product={product}
-              logoUrl={logoUrl}
-              logoId={logoId}
+              logos={logos}
+              zoneLogoAssignments={zoneLogoAssignments}
               activeZoneIds={activeZoneIds}
               focusedZoneId={focusedZoneId}
               viewedZoneId={viewedZoneId}

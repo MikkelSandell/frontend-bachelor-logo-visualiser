@@ -3,6 +3,7 @@ import { Stage, Layer, Image as KonvaImage, Rect, Transformer } from "react-konv
 import Konva from "konva";
 import useImage from "use-image";
 import type { Product, PrintZone } from "@logo-visualizer/shared";
+import type { LogoEntry } from "../../types";
 import { requestExportPng } from "../../api/viewerApi";
 import { Button } from "../ui/button";
 import { Download, Loader2 } from "lucide-react";
@@ -16,10 +17,50 @@ interface LogoState {
   height: number;
 }
 
+/** Loads multiple images keyed by an arbitrary string (zone ID). */
+function useMultipleImages(
+  urlMap: Record<string, string>
+): Record<string, HTMLImageElement | undefined> {
+  const [images, setImages] = useState<Record<string, HTMLImageElement | undefined>>({});
+
+  const urlString = JSON.stringify(
+    Object.fromEntries(
+      Object.entries(urlMap).sort(([a], [b]) => a.localeCompare(b))
+    )
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const map = JSON.parse(urlString) as Record<string, string>;
+    const entries = Object.entries(map).filter(([, url]) => !!url);
+
+    if (entries.length === 0) {
+      setImages({});
+      return;
+    }
+
+    setImages({});
+
+    entries.forEach(([key, url]) => {
+      const img = new Image();
+      img.onload = () => {
+        if (!cancelled) setImages((prev) => ({ ...prev, [key]: img }));
+      };
+      img.src = url;
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [urlString]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return images;
+}
+
 interface Props {
   product: Product;
-  logoUrl?: string;
-  logoId: string | null;
+  logos: LogoEntry[];
+  zoneLogoAssignments: Record<string, string>;
   /** All zones that have a logo placed on them */
   activeZoneIds: string[];
   /** Which active zone is currently selected for editing */
@@ -31,9 +72,14 @@ interface Props {
 }
 
 export function ProductCanvas({
-  product, logoUrl, logoId,
-  activeZoneIds, focusedZoneId, viewedZoneId,
-  onFocusZone, onProductLoaded,
+  product,
+  logos,
+  zoneLogoAssignments,
+  activeZoneIds,
+  focusedZoneId,
+  viewedZoneId,
+  onFocusZone,
+  onProductLoaded,
 }: Props) {
 
   function effectiveImageUrl(zone: PrintZone): string {
@@ -52,49 +98,69 @@ export function ProductCanvas({
   const viewedImageUrl = viewedZone ? effectiveImageUrl(viewedZone) : product.imageUrl;
   const viewedIsBack = viewedZone ? isBackZone(viewedZone) : false;
 
-  // All zones on the current side — always shown as outlines
   const allSideZones = product.printZones.filter((z) => isBackZone(z) === viewedIsBack);
-  // Active zones on the current side — shown with logos
   const visibleZones = allSideZones.filter((z) => activeZoneIds.includes(z.id));
 
   const focusedZone = product.printZones.find((z) => z.id === focusedZoneId) ?? null;
   const focusedIsVisible = focusedZone ? isBackZone(focusedZone) === viewedIsBack : false;
 
   const [productImage] = useImage(viewedImageUrl);
-  const [logoImage] = useImage(logoUrl ?? "");
 
-  // Per-zone logo placements
+  // Build a map of zoneId → logo URL for all active zones that have an assignment
+  const zoneLogoUrlMap: Record<string, string> = {};
+  for (const zoneId of activeZoneIds) {
+    const logoId = zoneLogoAssignments[zoneId];
+    if (!logoId) continue;
+    const logo = logos.find((l) => l.id === logoId);
+    if (logo) zoneLogoUrlMap[zoneId] = logo.url;
+  }
+
+  const logoImages = useMultipleImages(zoneLogoUrlMap);
+
   const [logoStates, setLogoStates] = useState<Record<string, LogoState>>({});
   const [exporting, setExporting] = useState(false);
 
   const transformerRef = useRef<Konva.Transformer>(null);
-  // Map of zoneId → Konva.Image node — populated via ref callbacks
   const nodeRefs = useRef<Record<string, Konva.Image | null>>({});
 
-  // Clear all placements when a new logo is uploaded
+  // Reset placement for a zone when its assigned logo changes
+  const prevAssignmentsRef = useRef<Record<string, string>>({});
   useEffect(() => {
-    setLogoStates({});
-  }, [logoUrl]);
+    const prev = prevAssignmentsRef.current;
+    prevAssignmentsRef.current = zoneLogoAssignments;
+
+    const changedZones = Object.keys({ ...prev, ...zoneLogoAssignments }).filter(
+      (zoneId) => prev[zoneId] !== zoneLogoAssignments[zoneId]
+    );
+    if (changedZones.length === 0) return;
+
+    setLogoStates((existing) => {
+      const next = { ...existing };
+      for (const zoneId of changedZones) delete next[zoneId];
+      return next;
+    });
+  }, [zoneLogoAssignments]);
 
   const scale = Math.min(1, MAX_WIDTH / product.imageWidth);
   const canvasWidth  = product.imageWidth  * scale;
   const canvasHeight = product.imageHeight * scale;
 
-  // Initialize placement for any newly activated zone that doesn't have one yet
+  // Initialize placement for any newly activated zone that has a loaded logo image
   useEffect(() => {
-    if (!logoImage) return;
     setLogoStates((prev) => {
       let changed = false;
       const next = { ...prev };
       for (const zoneId of activeZoneIds) {
         if (next[zoneId]) continue;
+        const img = logoImages[zoneId];
+        if (!img) continue;
         const zone = product.printZones.find((z) => z.id === zoneId);
         if (!zone) continue;
         const dispX = displayXForZone(zone);
         const zoneW = zone.width  * scale;
         const zoneH = zone.height * scale;
-        const logoW = Math.min(logoImage.width, zoneW * 0.5);
-        const logoH = (logoImage.height / logoImage.width) * logoW;
+        const logoW = Math.min(img.width, zoneW * 0.5);
+        const logoH = (img.height / img.width) * logoW;
         next[zoneId] = {
           x: dispX * scale + zoneW / 2 - logoW / 2,
           y: zone.y * scale + zoneH / 2 - logoH / 2,
@@ -106,7 +172,7 @@ export function ProductCanvas({
       return changed ? next : prev;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeZoneIds, logoImage, scale]);
+  }, [activeZoneIds, logoImages, scale]);
 
   // Attach transformer to the focused logo node
   useEffect(() => {
@@ -139,23 +205,33 @@ export function ProductCanvas({
     }));
   }
 
-  // V8 – export PNG for the focused zone
+  // V8 – export PNG: composites all logos visible on the current side into one image
   async function handleExportPng() {
-    const state = focusedZoneId ? logoStates[focusedZoneId] : null;
-    if (!state || !focusedZone || !logoId) {
-      alert("Vælg en printzone, upload et logo, og vent til det er uploadet.");
-      return;
-    }
-    setExporting(true);
-    try {
-      const blob = await requestExportPng({
-        productId: product.id,
-        zoneId: focusedZone.id,
+    const placements = visibleZones.flatMap((zone) => {
+      const state = logoStates[zone.id];
+      const logoId = zoneLogoAssignments[zone.id];
+      if (!state || !logoId) return [];
+      return [{
+        zoneId: zone.id,
         logoId,
         logoX: Math.round(state.x / scale),
         logoY: Math.round(state.y / scale),
         logoWidth:  Math.round(state.width  / scale),
         logoHeight: Math.round(state.height / scale),
+      }];
+    });
+
+    if (placements.length === 0) {
+      alert("Ingen logoer er placeret på den nuværende side. Upload et logo og placer det i en printzone.");
+      return;
+    }
+
+    setExporting(true);
+    try {
+      const blob = await requestExportPng({
+        productId: product.id,
+        backgroundImageUrl: viewedImageUrl,
+        placements,
       });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -180,19 +256,13 @@ export function ProductCanvas({
           width={canvasWidth}
           height={canvasHeight}
           style={{ border: "1px solid #e8e8e8", borderRadius: "0.5rem" }}
-          onMouseDown={(e) => {
-            // Clicking the stage background deselects focused zone
-            if (e.target === e.target.getStage()) {
-              // no-op — keep focused zone; user must click a logo to switch
-            }
-          }}
         >
           <Layer>
             {productImage && (
               <KonvaImage image={productImage} width={canvasWidth} height={canvasHeight} />
             )}
 
-            {/* Zone outlines — always visible so the user can see print areas without a logo */}
+            {/* Zone outlines — always visible so the user can see print areas */}
             {allSideZones.map((zone) => {
               const isActive  = activeZoneIds.includes(zone.id);
               const isFocused = focusedZoneId === zone.id;
@@ -207,20 +277,28 @@ export function ProductCanvas({
                   stroke={isFocused ? "#ff6633" : isActive ? "#ff9966" : "#bbbbbb"}
                   strokeWidth={isFocused ? 2 : 1}
                   dash={[6, 3]}
-                  fill={isFocused ? "rgba(255,102,51,0.06)" : isActive ? "rgba(255,102,51,0.03)" : "transparent"}
+                  fill={
+                    isFocused
+                      ? "rgba(255,102,51,0.06)"
+                      : isActive
+                      ? "rgba(255,102,51,0.03)"
+                      : "transparent"
+                  }
                 />
               );
             })}
 
-            {logoImage && visibleZones.map((zone) => {
+            {/* Per-zone logos */}
+            {visibleZones.map((zone) => {
+              const img   = logoImages[zone.id];
               const state = logoStates[zone.id];
-              if (!state) return null;
+              if (!img || !state) return null;
               const isFocused = focusedZoneId === zone.id;
               return (
                 <KonvaImage
                   key={`logo-${zone.id}`}
                   ref={(node) => { nodeRefs.current[zone.id] = node; }}
-                  image={logoImage}
+                  image={img}
                   x={state.x}
                   y={state.y}
                   width={state.width}
@@ -243,7 +321,12 @@ export function ProductCanvas({
                     node.scaleY(1);
                     const clamped = clampToZone(node.x(), node.y(), newWidth, newHeight, zone);
                     node.position(clamped);
-                    updateLogoState(zone.id, { x: clamped.x, y: clamped.y, width: newWidth, height: newHeight });
+                    updateLogoState(zone.id, {
+                      x: clamped.x,
+                      y: clamped.y,
+                      width: newWidth,
+                      height: newHeight,
+                    });
                   }}
                 />
               );
@@ -277,7 +360,10 @@ export function ProductCanvas({
       </div>
 
       <Button variant="outline" size="sm" onClick={handleExportPng} disabled={exporting}>
-        {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+        {exporting
+          ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          : <Download className="h-4 w-4 mr-2" />
+        }
         {exporting ? "Eksporterer…" : "Download som PNG"}
       </Button>
     </div>

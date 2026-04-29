@@ -29,14 +29,20 @@ export const uploadLogo = (file: File) => {
 
 // ─── PNG export (B4) ─────────────────────────────────────────────────────────
 
-export const requestExportPng = (payload: {
-  productId: string;
+export interface ZonePlacement {
   zoneId: string;
   logoId: string;
   logoX: number;
   logoY: number;
   logoWidth: number;
   logoHeight: number;
+}
+
+export const requestExportPng = (payload: {
+  productId: string;
+  /** Full URL of the product background image for the exported side. */
+  backgroundImageUrl: string;
+  placements: ZonePlacement[];
 }) =>
   client
     .post("/export/png", payload, { responseType: "blob" })
