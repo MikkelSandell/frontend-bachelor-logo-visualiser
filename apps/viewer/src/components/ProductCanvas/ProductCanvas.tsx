@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Stage, Layer, Image as KonvaImage, Rect, Transformer } from "react-konva";
+import { Stage, Layer, Image as KonvaImage, Rect, Text as KonvaText, Transformer } from "react-konva";
 import Konva from "konva";
 import useImage from "use-image";
 import type { Product, PrintZone } from "@logo-visualizer/shared";
-import type { LogoEntry } from "../../types";
+import type { LogoEntry, TextEntry } from "../../types";
 import { requestExportPng } from "../../api/viewerApi";
 import { Button } from "../ui/button";
 import { Download, Loader2 } from "lucide-react";
@@ -17,7 +17,16 @@ interface LogoState {
   height: number;
 }
 
-/** Loads multiple images keyed by an arbitrary string (zone ID). */
+interface TextState {
+  x: number;        // canvas pixels
+  y: number;        // canvas pixels
+  fontSize: number; // product-image pixels (divided by scale when exporting)
+  color: string;    // '#rrggbb'
+}
+
+type FocusedElement = { zoneId: string; type: "logo" | "text" } | null;
+
+/** Loads multiple images keyed by zone ID. Updates per-image as each one loads. */
 function useMultipleImages(
   urlMap: Record<string, string>
 ): Record<string, HTMLImageElement | undefined> {
@@ -34,11 +43,7 @@ function useMultipleImages(
     const map = JSON.parse(urlString) as Record<string, string>;
     const entries = Object.entries(map).filter(([, url]) => !!url);
 
-    if (entries.length === 0) {
-      setImages({});
-      return;
-    }
-
+    if (entries.length === 0) { setImages({}); return; }
     setImages({});
 
     entries.forEach(([key, url]) => {
@@ -49,9 +54,7 @@ function useMultipleImages(
       img.src = url;
     });
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [urlString]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return images;
@@ -61,25 +64,20 @@ interface Props {
   product: Product;
   logos: LogoEntry[];
   zoneLogoAssignments: Record<string, string>;
-  /** All zones that have a logo placed on them */
+  texts: TextEntry[];
+  zoneTextAssignments: Record<string, string>;
   activeZoneIds: string[];
-  /** Which active zone is currently selected for editing */
   focusedZoneId: string | null;
-  /** Which zone's image is currently displayed */
   viewedZoneId: string | null;
   onFocusZone: (zoneId: string) => void;
   onProductLoaded: (product: Product) => void;
 }
 
 export function ProductCanvas({
-  product,
-  logos,
-  zoneLogoAssignments,
-  activeZoneIds,
-  focusedZoneId,
-  viewedZoneId,
-  onFocusZone,
-  onProductLoaded,
+  product, logos, zoneLogoAssignments,
+  texts, zoneTextAssignments,
+  activeZoneIds, focusedZoneId, viewedZoneId,
+  onFocusZone, onProductLoaded,
 }: Props) {
 
   function effectiveImageUrl(zone: PrintZone): string {
@@ -101,12 +99,9 @@ export function ProductCanvas({
   const allSideZones = product.printZones.filter((z) => isBackZone(z) === viewedIsBack);
   const visibleZones = allSideZones.filter((z) => activeZoneIds.includes(z.id));
 
-  const focusedZone = product.printZones.find((z) => z.id === focusedZoneId) ?? null;
-  const focusedIsVisible = focusedZone ? isBackZone(focusedZone) === viewedIsBack : false;
-
   const [productImage] = useImage(viewedImageUrl);
 
-  // Build a map of zoneId → logo URL for all active zones that have an assignment
+  // Build URL map: zoneId → logo URL for active zones that have an assignment
   const zoneLogoUrlMap: Record<string, string> = {};
   for (const zoneId of activeZoneIds) {
     const logoId = zoneLogoAssignments[zoneId];
@@ -114,38 +109,75 @@ export function ProductCanvas({
     const logo = logos.find((l) => l.id === logoId);
     if (logo) zoneLogoUrlMap[zoneId] = logo.url;
   }
-
   const logoImages = useMultipleImages(zoneLogoUrlMap);
 
   const [logoStates, setLogoStates] = useState<Record<string, LogoState>>({});
+  const [textStates, setTextStates] = useState<Record<string, TextState>>({});
+  // Which canvas element (logo or text) is currently selected for the Transformer
+  const [focusedElement, setFocusedElement] = useState<FocusedElement>(null);
   const [exporting, setExporting] = useState(false);
 
   const transformerRef = useRef<Konva.Transformer>(null);
   const nodeRefs = useRef<Record<string, Konva.Image | null>>({});
-
-  // Reset placement for a zone when its assigned logo changes
-  const prevAssignmentsRef = useRef<Record<string, string>>({});
-  useEffect(() => {
-    const prev = prevAssignmentsRef.current;
-    prevAssignmentsRef.current = zoneLogoAssignments;
-
-    const changedZones = Object.keys({ ...prev, ...zoneLogoAssignments }).filter(
-      (zoneId) => prev[zoneId] !== zoneLogoAssignments[zoneId]
-    );
-    if (changedZones.length === 0) return;
-
-    setLogoStates((existing) => {
-      const next = { ...existing };
-      for (const zoneId of changedZones) delete next[zoneId];
-      return next;
-    });
-  }, [zoneLogoAssignments]);
+  const textNodeRefs = useRef<Record<string, Konva.Text | null>>({});
 
   const scale = Math.min(1, MAX_WIDTH / product.imageWidth);
   const canvasWidth  = product.imageWidth  * scale;
   const canvasHeight = product.imageHeight * scale;
 
-  // Initialize placement for any newly activated zone that has a loaded logo image
+  // ─── Reset logo placement when its assignment changes ─────────────────────
+
+  const prevLogoAssignmentsRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const prev = prevLogoAssignmentsRef.current;
+    prevLogoAssignmentsRef.current = zoneLogoAssignments;
+    const changed = Object.keys({ ...prev, ...zoneLogoAssignments }).filter(
+      (z) => prev[z] !== zoneLogoAssignments[z]
+    );
+    if (changed.length === 0) return;
+    setLogoStates((s) => {
+      const next = { ...s };
+      for (const z of changed) delete next[z];
+      return next;
+    });
+  }, [zoneLogoAssignments]);
+
+  // ─── Reset text placement when its assignment changes ─────────────────────
+
+  const prevTextAssignmentsRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const prev = prevTextAssignmentsRef.current;
+    prevTextAssignmentsRef.current = zoneTextAssignments;
+    const changed = Object.keys({ ...prev, ...zoneTextAssignments }).filter(
+      (z) => prev[z] !== zoneTextAssignments[z]
+    );
+    if (changed.length === 0) return;
+    setTextStates((s) => {
+      const next = { ...s };
+      for (const zoneId of changed) {
+        if (zoneTextAssignments[zoneId]) {
+          // Initialize at zone upper-left with a small inset
+          const zone = product.printZones.find((z) => z.id === zoneId);
+          if (zone) {
+            const dispX = displayXForZone(zone);
+            next[zoneId] = {
+              x: dispX * scale + zone.width * scale * 0.08,
+              y: zone.y  * scale + zone.height * scale * 0.15,
+              fontSize: 24,
+              color: "#000000",
+            };
+          }
+        } else {
+          delete next[zoneId];
+        }
+      }
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoneTextAssignments]);
+
+  // ─── Initialize logo placements for newly active zones ───────────────────
+
   useEffect(() => {
     setLogoStates((prev) => {
       let changed = false;
@@ -163,7 +195,7 @@ export function ProductCanvas({
         const logoH = (img.height / img.width) * logoW;
         next[zoneId] = {
           x: dispX * scale + zoneW / 2 - logoW / 2,
-          y: zone.y * scale + zoneH / 2 - logoH / 2,
+          y: zone.y  * scale + zoneH / 2 - logoH / 2,
           width: logoW,
           height: logoH,
         };
@@ -174,16 +206,26 @@ export function ProductCanvas({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeZoneIds, logoImages, scale]);
 
-  // Attach transformer to the focused logo node
+  // ─── Attach Transformer to focused element ────────────────────────────────
+
   useEffect(() => {
     if (!transformerRef.current) return;
-    if (focusedZoneId && focusedIsVisible && nodeRefs.current[focusedZoneId]) {
-      transformerRef.current.nodes([nodeRefs.current[focusedZoneId]!]);
-    } else {
-      transformerRef.current.nodes([]);
+    let node: Konva.Image | Konva.Text | null = null;
+
+    if (focusedElement) {
+      const { zoneId, type } = focusedElement;
+      const zone = product.printZones.find((z) => z.id === zoneId);
+      const isVisible = zone ? isBackZone(zone) === viewedIsBack : false;
+      if (isVisible) {
+        node = type === "logo"
+          ? (nodeRefs.current[zoneId] ?? null)
+          : (textNodeRefs.current[zoneId] ?? null);
+      }
     }
+
+    transformerRef.current.nodes(node ? [node as Konva.Node] : []);
     transformerRef.current.getLayer()?.batchDraw();
-  }, [focusedZoneId, focusedIsVisible, logoStates]);
+  }, [focusedElement, logoStates, textStates, viewedIsBack]); // eslint-disable-line
 
   useEffect(() => {
     onProductLoaded(product);
@@ -198,22 +240,15 @@ export function ProductCanvas({
     };
   }
 
-  function updateLogoState(zoneId: string, patch: Partial<LogoState>) {
-    setLogoStates((prev) => ({
-      ...prev,
-      [zoneId]: { ...prev[zoneId], ...patch },
-    }));
-  }
+  // ─── Export ───────────────────────────────────────────────────────────────
 
-  // V8 – export PNG: composites all logos visible on the current side into one image
   async function handleExportPng() {
-    const placements = visibleZones.flatMap((zone) => {
+    const logoPlacements = visibleZones.flatMap((zone) => {
       const state = logoStates[zone.id];
       const logoId = zoneLogoAssignments[zone.id];
       if (!state || !logoId) return [];
       return [{
-        zoneId: zone.id,
-        logoId,
+        zoneId: zone.id, logoId,
         logoX: Math.round(state.x / scale),
         logoY: Math.round(state.y / scale),
         logoWidth:  Math.round(state.width  / scale),
@@ -221,8 +256,23 @@ export function ProductCanvas({
       }];
     });
 
-    if (placements.length === 0) {
-      alert("Ingen logoer er placeret på den nuværende side. Upload et logo og placer det i en printzone.");
+    const textPlacements = visibleZones.flatMap((zone) => {
+      const state = textStates[zone.id];
+      const textId = zoneTextAssignments[zone.id];
+      const entry = textId ? texts.find((t) => t.id === textId) : null;
+      if (!state || !entry) return [];
+      return [{
+        zoneId: zone.id,
+        text: entry.text,
+        x: Math.round(state.x / scale),
+        y: Math.round(state.y / scale),
+        fontSize: state.fontSize,
+        color: state.color,
+      }];
+    });
+
+    if (logoPlacements.length === 0 && textPlacements.length === 0) {
+      alert("Ingen logoer eller tekster er placeret på den nuværende side.");
       return;
     }
 
@@ -231,7 +281,8 @@ export function ProductCanvas({
       const blob = await requestExportPng({
         productId: product.id,
         backgroundImageUrl: viewedImageUrl,
-        placements,
+        placements: logoPlacements,
+        textPlacements,
       });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -249,6 +300,16 @@ export function ProductCanvas({
     }
   }
 
+  // ─── Focused text state helpers ───────────────────────────────────────────
+
+  const focusedTextZoneId =
+    focusedElement?.type === "text" ? focusedElement.zoneId : null;
+  const focusedTextState = focusedTextZoneId ? textStates[focusedTextZoneId] : null;
+
+  function updateTextState(zoneId: string, patch: Partial<TextState>) {
+    setTextStates((prev) => ({ ...prev, [zoneId]: { ...prev[zoneId], ...patch } }));
+  }
+
   return (
     <div className="space-y-3">
       <div className="overflow-auto">
@@ -256,13 +317,16 @@ export function ProductCanvas({
           width={canvasWidth}
           height={canvasHeight}
           style={{ border: "1px solid #e8e8e8", borderRadius: "0.5rem" }}
+          onMouseDown={(e) => {
+            if (e.target === e.target.getStage()) setFocusedElement(null);
+          }}
         >
           <Layer>
             {productImage && (
               <KonvaImage image={productImage} width={canvasWidth} height={canvasHeight} />
             )}
 
-            {/* Zone outlines — always visible so the user can see print areas */}
+            {/* Zone outlines */}
             {allSideZones.map((zone) => {
               const isActive  = activeZoneIds.includes(zone.id);
               const isFocused = focusedZoneId === zone.id;
@@ -293,7 +357,8 @@ export function ProductCanvas({
               const img   = logoImages[zone.id];
               const state = logoStates[zone.id];
               if (!img || !state) return null;
-              const isFocused = focusedZoneId === zone.id;
+              const isLogoFocused =
+                focusedElement?.zoneId === zone.id && focusedElement?.type === "logo";
               return (
                 <KonvaImage
                   key={`logo-${zone.id}`}
@@ -303,61 +368,133 @@ export function ProductCanvas({
                   y={state.y}
                   width={state.width}
                   height={state.height}
-                  draggable={isFocused}
-                  onClick={() => onFocusZone(zone.id)}
-                  onTap={() => onFocusZone(zone.id)}
+                  draggable={isLogoFocused}
+                  onClick={() => { setFocusedElement({ zoneId: zone.id, type: "logo" }); onFocusZone(zone.id); }}
+                  onTap={() => { setFocusedElement({ zoneId: zone.id, type: "logo" }); onFocusZone(zone.id); }}
                   dragBoundFunc={(pos) =>
                     clampToZone(pos.x, pos.y, state.width, state.height, zone)
                   }
                   onDragEnd={(e) => {
                     const { x, y } = e.target.position();
-                    updateLogoState(zone.id, { x, y });
+                    setLogoStates((prev) => ({ ...prev, [zone.id]: { ...prev[zone.id], x, y } }));
                   }}
                   onTransformEnd={(e) => {
                     const node = e.target as Konva.Image;
                     const newWidth  = Math.max(20, node.width()  * node.scaleX());
                     const newHeight = Math.max(20, node.height() * node.scaleY());
-                    node.scaleX(1);
-                    node.scaleY(1);
+                    node.scaleX(1); node.scaleY(1);
                     const clamped = clampToZone(node.x(), node.y(), newWidth, newHeight, zone);
                     node.position(clamped);
-                    updateLogoState(zone.id, {
-                      x: clamped.x,
-                      y: clamped.y,
-                      width: newWidth,
-                      height: newHeight,
-                    });
+                    setLogoStates((prev) => ({
+                      ...prev,
+                      [zone.id]: { x: clamped.x, y: clamped.y, width: newWidth, height: newHeight },
+                    }));
                   }}
                 />
               );
             })}
 
-            {/* Single Transformer — attached to the focused logo */}
+            {/* Per-zone text items */}
+            {visibleZones.map((zone) => {
+              const textId = zoneTextAssignments[zone.id];
+              const entry  = textId ? texts.find((t) => t.id === textId) : null;
+              const state  = textStates[zone.id];
+              if (!entry || !state) return null;
+              return (
+                <KonvaText
+                  key={`text-${zone.id}`}
+                  ref={(node) => { textNodeRefs.current[zone.id] = node; }}
+                  text={entry.text}
+                  x={state.x}
+                  y={state.y}
+                  fontSize={state.fontSize * scale}
+                  fill={state.color}
+                  fontFamily="Arial, sans-serif"
+                  draggable
+                  onClick={() => { setFocusedElement({ zoneId: zone.id, type: "text" }); onFocusZone(zone.id); }}
+                  onTap={() => { setFocusedElement({ zoneId: zone.id, type: "text" }); onFocusZone(zone.id); }}
+                  dragBoundFunc={(pos) => {
+                    const node = textNodeRefs.current[zone.id];
+                    const tw = (node?.width()  ?? 80) * (node?.scaleX() ?? 1);
+                    const th = (node?.height() ?? state.fontSize * scale) * (node?.scaleY() ?? 1);
+                    return clampToZone(pos.x, pos.y, tw, th, zone);
+                  }}
+                  onDragEnd={(e) => {
+                    const { x, y } = e.target.position();
+                    updateTextState(zone.id, { x, y });
+                  }}
+                  onTransformEnd={(e) => {
+                    const node = e.target as Konva.Text;
+                    // Scale factor applied by Transformer → convert back to product pixels
+                    const newFontSize = Math.max(8, (node.fontSize() * node.scaleY()) / scale);
+                    node.scaleX(1); node.scaleY(1);
+                    updateTextState(zone.id, { x: node.x(), y: node.y(), fontSize: newFontSize });
+                  }}
+                />
+              );
+            })}
+
+            {/* Single Transformer — attaches to whichever element is focused */}
             <Transformer
               ref={transformerRef}
-              keepRatio={true}
+              keepRatio={focusedElement?.type === "logo"}
               rotateEnabled={false}
-              enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]}
+              enabledAnchors={
+                focusedElement?.type === "logo"
+                  ? ["top-left", "top-right", "bottom-left", "bottom-right"]
+                  : ["top-left", "top-right", "bottom-left", "bottom-right",
+                     "middle-left", "middle-right", "top-center", "bottom-center"]
+              }
               boundBoxFunc={(oldBox, newBox) => {
-                if (!focusedZone || !focusedIsVisible) return oldBox;
-                if (newBox.width < 20 || newBox.height < 20) return oldBox;
-                const dispX = displayXForZone(focusedZone);
-                const zoneLeft   = dispX * scale;
-                const zoneTop    = focusedZone.y * scale;
-                const zoneRight  = (dispX + focusedZone.width)  * scale;
-                const zoneBottom = (focusedZone.y + focusedZone.height) * scale;
-                if (
-                  newBox.x < zoneLeft  ||
-                  newBox.y < zoneTop   ||
-                  newBox.x + newBox.width  > zoneRight  ||
-                  newBox.y + newBox.height > zoneBottom
-                ) return oldBox;
+                if (!focusedElement) return oldBox;
+                const zone = product.printZones.find((z) => z.id === focusedElement.zoneId);
+                if (!zone) return newBox;
+                if (newBox.width < 20 || newBox.height < 8) return oldBox;
+                const dispX = displayXForZone(zone);
+                const zL = dispX * scale,  zT = zone.y * scale;
+                const zR = (dispX + zone.width) * scale;
+                const zB = (zone.y + zone.height) * scale;
+                if (newBox.x < zL || newBox.y < zT ||
+                    newBox.x + newBox.width  > zR ||
+                    newBox.y + newBox.height > zB) return oldBox;
                 return newBox;
               }}
             />
           </Layer>
         </Stage>
       </div>
+
+      {/* Font controls — shown when a text element is focused */}
+      {focusedTextZoneId && focusedTextState && (
+        <div className="flex flex-wrap items-center gap-4 px-1 py-2 border border-border rounded-md bg-muted/20">
+          <span className="text-xs font-medium text-muted-foreground">Tekst</span>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-muted-foreground">Størrelse</label>
+            <input
+              type="range"
+              min={8}
+              max={96}
+              value={focusedTextState.fontSize}
+              onChange={(e) =>
+                updateTextState(focusedTextZoneId, { fontSize: Number(e.target.value) })
+              }
+              className="w-24 accent-primary"
+            />
+            <span className="text-xs w-8">{focusedTextState.fontSize}px</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-muted-foreground">Farve</label>
+            <input
+              type="color"
+              value={focusedTextState.color}
+              onChange={(e) =>
+                updateTextState(focusedTextZoneId, { color: e.target.value })
+              }
+              className="w-8 h-7 cursor-pointer border border-border rounded"
+            />
+          </div>
+        </div>
+      )}
 
       <Button variant="outline" size="sm" onClick={handleExportPng} disabled={exporting}>
         {exporting

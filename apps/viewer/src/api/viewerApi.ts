@@ -38,11 +38,21 @@ export interface ZonePlacement {
   logoHeight: number;
 }
 
+export interface TextPlacement {
+  zoneId: string;
+  text: string;
+  x: number;
+  y: number;
+  fontSize: number;
+  color: string;
+}
+
 export const requestExportPng = (payload: {
   productId: string;
   /** Full URL of the product background image for the exported side. */
   backgroundImageUrl: string;
   placements: ZonePlacement[];
+  textPlacements: TextPlacement[];
 }) =>
   client
     .post("/export/png", payload, { responseType: "blob" })

@@ -4,3 +4,8 @@ export interface LogoEntry {
   url: string;
   name: string;
 }
+
+export interface TextEntry {
+  id: string;
+  text: string;
+}

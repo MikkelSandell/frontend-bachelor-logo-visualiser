@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import type { Product } from "@logo-visualizer/shared";
-import type { LogoEntry } from "./types";
+import type { LogoEntry, TextEntry } from "./types";
 import { getMidoceanProducts, getMidoceanProduct } from "./api/viewerApi";
 import { LogoUploader } from "./components/LogoUploader/LogoUploader";
 import { LogoPicker } from "./components/LogoPicker/LogoPicker";
+import { TextLibrary } from "./components/TextLibrary/TextLibrary";
+import { TextPicker } from "./components/TextPicker/TextPicker";
 import { ProductCanvas } from "./components/ProductCanvas/ProductCanvas";
 import { ZoneSelector } from "./components/ZoneSelector/ZoneSelector";
 import { TechniqueSelector } from "./components/TechniqueSelector/TechniqueSelector";
@@ -24,21 +26,18 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
 
   const [product, setProduct] = useState<Product | null>(null);
 
-  /** All uploaded logos for the current session. */
   const [logos, setLogos] = useState<LogoEntry[]>(() =>
     preloadedLogo
       ? [{ id: "preloaded", url: preloadedLogo, name: "Forudindlæst logo" }]
       : []
   );
-
-  /** Maps zoneId → logoId (which logo is placed in which zone). */
   const [zoneLogoAssignments, setZoneLogoAssignments] = useState<Record<string, string>>({});
 
-  /** Zones that have been activated (show outline + logo if assigned). */
+  const [texts, setTexts] = useState<TextEntry[]>([]);
+  const [zoneTextAssignments, setZoneTextAssignments] = useState<Record<string, string>>({});
+
   const [activeZoneIds, setActiveZoneIds] = useState<string[]>([]);
-  /** Which active zone is currently selected for editing. */
   const [focusedZoneId, setFocusedZoneId] = useState<string | null>(null);
-  /** Which zone's image is displayed in the canvas (FRONT or BACK side). */
   const [viewedZoneId, setViewedZoneId] = useState<string | null>(null);
 
   const focusedZone = product?.printZones.find((z) => z.id === focusedZoneId) ?? null;
@@ -55,7 +54,6 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
         setProduct(p);
         const frontZone = p.printZones.find((z) => /^front$/i.test(z.name));
         setViewedZoneId(frontZone?.id ?? p.printZones[0]?.id ?? null);
-        // Auto-activate single zone for single-zone products
         if (p.printZones.length === 1) {
           setActiveZoneIds([p.printZones[0].id]);
           setFocusedZoneId(p.printZones[0].id);
@@ -64,21 +62,18 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
     }
   }, [preloadedProductId]);
 
-  /** Maps any zone id to the id of its side zone (FRONT or BACK) for canvas display. */
   function toSideZoneId(id: string, p: Product): string {
     const zone = p.printZones.find((z) => z.id === id);
     if (!zone) return id;
-    if (/back/i.test(zone.name)) {
+    if (/back/i.test(zone.name))
       return p.printZones.find((z) => /^back$/i.test(z.name))?.id ?? id;
-    }
     return p.printZones.find((z) => /^front$/i.test(z.name))?.id ?? id;
   }
 
   function handleSelectProduct(p: Product) {
     setProduct(p);
     setZoneLogoAssignments({});
-    // For single-zone products, auto-activate the only zone so it is immediately
-    // ready to receive a logo without needing the ZoneSelector.
+    setZoneTextAssignments({});
     const singleZoneId = p.printZones.length === 1 ? p.printZones[0].id : null;
     setActiveZoneIds(singleZoneId ? [singleZoneId] : []);
     setFocusedZoneId(singleZoneId);
@@ -86,25 +81,20 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
     setViewedZoneId(frontZone?.id ?? p.printZones[0]?.id ?? null);
   }
 
-  /** Activate an inactive zone and focus it. */
   function handleZoneToggle(id: string) {
     setActiveZoneIds((prev) => [...prev, id]);
     setFocusedZoneId(id);
     setViewedZoneId(toSideZoneId(id, product!));
-    // Auto-assign when there is exactly one logo — no picker needed.
-    if (logos.length === 1) {
+    if (logos.length === 1)
       setZoneLogoAssignments((prev) => ({ ...prev, [id]: logos[0].id }));
-    }
+    if (texts.length === 1)
+      setZoneTextAssignments((prev) => ({ ...prev, [id]: texts[0].id }));
   }
 
-  /** Remove a zone's logo entirely. */
   function handleZoneDeactivate(id: string) {
     setActiveZoneIds((prev) => prev.filter((z) => z !== id));
-    setZoneLogoAssignments((prev) => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
+    setZoneLogoAssignments((prev) => { const n = { ...prev }; delete n[id]; return n; });
+    setZoneTextAssignments((prev) => { const n = { ...prev }; delete n[id]; return n; });
     if (focusedZoneId === id) {
       const remaining = activeZoneIds.filter((z) => z !== id);
       const next = remaining[0] ?? null;
@@ -113,44 +103,68 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
     }
   }
 
-  /** Called when a new logo has been uploaded. */
+  // ─── Logo handlers ────────────────────────────────────────────────────────
+
   function handleLogoUploaded(logo: LogoEntry) {
     setLogos((prev) => [...prev, logo]);
-    // First logo: assign to every currently active zone that has no assignment yet.
     if (logos.length === 0) {
       setZoneLogoAssignments((prev) => {
         const next = { ...prev };
-        for (const zoneId of activeZoneIds) {
-          if (!next[zoneId]) next[zoneId] = logo.id;
-        }
+        for (const zoneId of activeZoneIds) if (!next[zoneId]) next[zoneId] = logo.id;
         return next;
       });
     }
   }
 
-  /** Remove a logo from the library and clear all zone assignments that used it. */
   function handleLogoRemoved(id: string) {
-    const remainingLogos = logos.filter((l) => l.id !== id);
-    setLogos(remainingLogos);
-
+    const remaining = logos.filter((l) => l.id !== id);
+    setLogos(remaining);
     setZoneLogoAssignments((prev) => {
       const next: Record<string, string> = {};
       for (const [zoneId, logoId] of Object.entries(prev)) {
-        if (logoId !== id) {
-          next[zoneId] = logoId;
-        } else if (remainingLogos.length === 1) {
-          // One logo remains — auto-assign it to the now-empty zone.
-          next[zoneId] = remainingLogos[0].id;
-        }
-        // else: zone loses its logo; user must re-assign via LogoPicker.
+        if (logoId !== id) next[zoneId] = logoId;
+        else if (remaining.length === 1) next[zoneId] = remaining[0].id;
       }
       return next;
     });
   }
 
-  /** Assign a specific logo to a specific zone. */
   function handleAssignLogo(zoneId: string, logoId: string) {
     setZoneLogoAssignments((prev) => ({ ...prev, [zoneId]: logoId }));
+  }
+
+  // ─── Text handlers ────────────────────────────────────────────────────────
+
+  function handleTextAdded(entry: TextEntry) {
+    setTexts((prev) => [...prev, entry]);
+    if (texts.length === 0) {
+      setZoneTextAssignments((prev) => {
+        const next = { ...prev };
+        for (const zoneId of activeZoneIds) if (!next[zoneId]) next[zoneId] = entry.id;
+        return next;
+      });
+    }
+  }
+
+  function handleTextRemoved(id: string) {
+    const remaining = texts.filter((t) => t.id !== id);
+    setTexts(remaining);
+    setZoneTextAssignments((prev) => {
+      const next: Record<string, string> = {};
+      for (const [zoneId, textId] of Object.entries(prev)) {
+        if (textId !== id) next[zoneId] = textId;
+        else if (remaining.length === 1) next[zoneId] = remaining[0].id;
+      }
+      return next;
+    });
+  }
+
+  function handleTextEdited(id: string, newText: string) {
+    setTexts((prev) => prev.map((t) => (t.id === id ? { ...t, text: newText } : t)));
+  }
+
+  function handleAssignText(zoneId: string, textId: string) {
+    setZoneTextAssignments((prev) => ({ ...prev, [zoneId]: textId }));
   }
 
   return (
@@ -233,20 +247,28 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                 setActiveZoneIds([]);
                 setFocusedZoneId(null);
                 setZoneLogoAssignments({});
-                // Logos are preserved — the user may want to apply them to another product.
+                setZoneTextAssignments({});
               }}
             >
               ← Vælg andet produkt
             </button>
 
-            {/* V1 – logo library (upload one or more logos) */}
+            {/* V1 – logo library */}
             <LogoUploader
               logos={logos}
               onLogoUploaded={handleLogoUploaded}
               onLogoRemoved={handleLogoRemoved}
             />
 
-            {/* V3 – zone multi-selector (hidden for single-zone products) */}
+            {/* Text library */}
+            <TextLibrary
+              texts={texts}
+              onTextAdded={handleTextAdded}
+              onTextRemoved={handleTextRemoved}
+              onTextEdited={handleTextEdited}
+            />
+
+            {/* V3 – zone multi-selector */}
             {product.printZones.length > 1 && (
               <ZoneSelector
                 zones={product.printZones}
@@ -261,7 +283,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
               />
             )}
 
-            {/* Logo picker — shown when multiple logos exist and a zone is focused */}
+            {/* Logo picker — when multiple logos and a zone is focused */}
             {logos.length > 1 && focusedZoneId && focusedZone && (
               <LogoPicker
                 logos={logos}
@@ -271,7 +293,17 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
               />
             )}
 
-            {/* Side viewer — browse product sides without changing active zones */}
+            {/* Text picker — when multiple texts and a zone is focused */}
+            {texts.length > 1 && focusedZoneId && focusedZone && (
+              <TextPicker
+                texts={texts}
+                zone={focusedZone}
+                assignedTextId={zoneTextAssignments[focusedZoneId] ?? null}
+                onAssign={(textId) => handleAssignText(focusedZoneId, textId)}
+              />
+            )}
+
+            {/* Side viewer */}
             {(() => {
               const sides = product.printZones.filter((z) =>
                 /^(front|back)$/i.test(z.name)
@@ -310,6 +342,8 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
               product={product}
               logos={logos}
               zoneLogoAssignments={zoneLogoAssignments}
+              texts={texts}
+              zoneTextAssignments={zoneTextAssignments}
               activeZoneIds={activeZoneIds}
               focusedZoneId={focusedZoneId}
               viewedZoneId={viewedZoneId}
