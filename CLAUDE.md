@@ -32,14 +32,18 @@ frontend/
 │       └── src/
 │           ├── api/           # viewerApi.ts
 │           ├── components/
-│           │   ├── LogoUploader/
-│           │   ├── ProductCanvas/
+│           │   ├── LogoUploader/   # multi-logo library (upload / remove)
+│           │   ├── LogoPicker/     # assign a logo to the focused zone (shown when logos > 1)
+│           │   ├── TextLibrary/    # add / edit / remove text entries
+│           │   ├── TextPicker/     # assign a text to the focused zone (shown when texts > 1)
+│           │   ├── ProductCanvas/  # Konva canvas — logos + text per zone, shared Transformer
 │           │   ├── ZoneSelector/
 │           │   ├── TechniqueSelector/
-│           │   └── ui/        # re-exports from @logo-visualizer/shared
+│           │   └── ui/             # re-exports from @logo-visualizer/shared
 │           ├── lib/
-│           │   └── utils.ts   # re-exports cn() from @logo-visualizer/shared
-│           └── App.tsx        # Product picker → logo + canvas flow
+│           │   └── utils.ts        # re-exports cn() from @logo-visualizer/shared
+│           ├── types.ts            # viewer-only types: LogoEntry, TextEntry
+│           └── App.tsx             # Product picker → logo/text library → zone assignment → canvas
 └── packages/
     └── shared/         # Domain types + shared UI components + cn() utility
         └── src/
@@ -58,9 +62,10 @@ frontend/
 | `packages/shared/src/lib/utils.ts` | `cn()` implementation (clsx + tailwind-merge). Canonical source — both apps re-export from here. |
 | `packages/shared/src/components/ui/` | Canonical UI component implementations. Both apps' `src/components/ui/` files are thin re-exports from `@logo-visualizer/shared`. Both apps' `tailwind.config.ts` include `../../packages/shared/src/**/*.{ts,tsx}` so Tailwind scans these files. |
 | `apps/admin/src/api/productApi.ts` | All Admin → backend API calls. Includes `ensureToken()` which fetches a dev JWT on first write. All zone changes are batched and sent via `updateProduct()` (PUT with full product + zones list); individual `createZone`/`updateZone`/`deleteZone` also exist for direct use. `normalizeProduct()` normalises API responses, including mapping `allowedTechniques` from backend `{id, name}` objects to plain `PrintTechnique` strings. |
-| `apps/viewer/src/api/viewerApi.ts` | All Viewer → backend API calls — `getMidoceanProducts()`, `getMidoceanProduct()` |
+| `apps/viewer/src/api/viewerApi.ts` | All Viewer → backend API calls — `getMidoceanProducts()`, `getMidoceanProduct()`, `uploadLogo()`, `requestExportPng()`. Export sends `{ backgroundImageUrl, placements[], textPlacements[] }` — all visible zones in one request. |
+| `apps/viewer/src/types.ts` | Viewer-only types: `LogoEntry { id, url, name }` and `TextEntry { id, text }`. Domain types (`Product`, `PrintZone`, …) still come from `@logo-visualizer/shared`. |
 | `apps/admin/src/pages/ProductEditorPage.tsx` | Full product editor. Inline Konva canvas: click-drag on background draws a new zone (auto-enters edit mode); clicking an existing zone selects/highlights it; "Rediger zone" button enters per-zone edit mode (only that zone draggable/resizable via Transformer). Inline zone form shows only while editing — fields: name, position px (X/Y), size px (Bredde/Højde), mm constraints, max colours, techniques. Product metadata (title, image) is collapsed behind "Rediger metadata" toggle. "Gem ændringer" saves everything via `updateProduct()`. "Slet produkt" deletes with confirmation and navigates back. |
-| `apps/viewer/src/components/ProductCanvas/` | Konva canvas for logo drag/scale/constrain (req V2–V6). Zone outlines are always visible (no logo required). Visible zones are grouped by side (front/back) based on `zone.name`, not image URL. Uses `zone.name` for arm/right-arm detection. Side switching (`viewedZoneId`) always resolves to a FRONT or BACK zone. |
+| `apps/viewer/src/components/ProductCanvas/` | Konva canvas — renders logos AND free text per zone. `focusedElement { zoneId, type: 'logo'\|'text' }` drives one shared Transformer: logos use corner anchors + keepRatio; text uses all 8 anchors + free scale (updates `fontSize`). Font size (8–96 product-px) and colour controls appear below the canvas when a text element is focused. Export collects all visible logo and text placements and sends them to `POST /api/export/png` in a single request. Zone outlines always visible; side grouping (front/back) by `zone.name`; arm/right-arm detection by name. |
 | `apps/viewer/src/components/ZoneSelector/` | Multi-select zone picker. First click activates a zone; second click (while focused) removes it; clicking an active-but-unfocused zone focuses it without removing it. |
 | `apps/viewer/src/web-component.ts` | Shadow DOM web component entry point (req V11 / NF1) |
 
@@ -159,11 +164,12 @@ Both apps proxy `/api/*` to `http://localhost:5000`.
 | A6 | `ProductsPage` – export JSON |
 | A7 | `ProductsPage` – product list with search filter |
 | A8 | `productApi.ts` – `updateProduct()` sends the full product + zone list in one PUT from `ProductEditorPage.handleSaveAll()`; backend diffs the zone list (creates/updates/deletes); auth token via `ensureToken()` |
-| V1 | `LogoUploader` component |
-| V2–V6 | `ProductCanvas` component — zone outlines always visible; side grouping by name; logo constrained to zone |
+| V1 | `LogoUploader` component — multi-logo library; `LogoEntry { id, url, name }` in `types.ts`; `LogoPicker` assigns logo to focused zone when multiple logos exist |
+| V2–V6 | `ProductCanvas` component — zone outlines always visible; side grouping by name; logos + text constrained to zone; shared Transformer handles both element types |
 | V3 | `ZoneSelector` component |
 | V7 | `TechniqueSelector` component |
-| V8 | `ProductCanvas.handleExportPng()` |
+| V8 | `ProductCanvas.handleExportPng()` — sends all visible placements (logos + text) to backend in one call |
+| —  | `TextLibrary` + `TextPicker` — free-text entry; `TextEntry { id, text }` in `types.ts`; text placed on canvas as Konva `Text`, draggable within zone, font size/colour configurable |
 | V10 | `main.tsx` – URL param `?logo=…&product=…` |
 | V11 / NF1 | `web-component.ts` – shadow DOM custom element |
 
