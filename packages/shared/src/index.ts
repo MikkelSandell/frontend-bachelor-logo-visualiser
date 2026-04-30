@@ -1,12 +1,15 @@
 // ─── Print techniques ───────────────────────────────────────────────────────
 
-export type PrintTechnique =
-  | "screen_print"
-  | "embroidery"
-  | "engraving"
-  | "sublimation"
-  | "digital_print"
-  | "pad_print";
+export const PRINT_TECHNIQUES = [
+  "screen_print",
+  "embroidery",
+  "sublimation",
+  "engraving",
+  "digital_print",
+  "pad_print",
+] as const;
+
+export type PrintTechnique = (typeof PRINT_TECHNIQUES)[number];
 
 // ─── Print zone ─────────────────────────────────────────────────────────────
 
@@ -23,7 +26,7 @@ export interface PrintZone {
   maxPhysicalWidthMm: number;
   maxPhysicalHeightMm: number;
   /** Which print techniques are allowed on this zone */
-  allowedTechniques: PrintTechnique[];
+  allowedTechniques: string[];
   /** 0 = unlimited */
   maxColors: number;
   /** Product image URL specific to this print position (e.g. back, chest, arm) */

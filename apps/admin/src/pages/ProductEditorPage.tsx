@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AlertCircle, ArrowLeft, Check, Download, Loader2, Pencil, Upload } from "lucide-react";
-import type { PrintZone, Product } from "@logo-visualizer/shared";
+import { PRINT_TECHNIQUES, type PrintZone, type Product } from "@logo-visualizer/shared";
 import { Layer, Image as KonvaImage, Rect, Stage, Text, Transformer } from "react-konva";
 import Konva from "konva";
 import useImage from "use-image";
@@ -35,6 +35,8 @@ type ZoneDraft = {
   allowedTechniques: string[];
 };
 
+const TECHNIQUE_SET = new Set<string>(PRINT_TECHNIQUES);
+
 const EMPTY_DRAFT: ZoneDraft = {
   id: "",
   name: "",
@@ -56,6 +58,9 @@ function validateZone(zone: ZoneDraft, imageWidth: number, imageHeight: number):
   if (zone.x < 0 || zone.y < 0) errors.push(`Zone ${zone.name || "(uden navn)"}: x/y skal være >= 0.`);
   if (zone.x + zone.width > imageWidth) errors.push(`Zone ${zone.name || "(uden navn)"}: x + width må ikke overstige imageWidth.`);
   if (zone.y + zone.height > imageHeight) errors.push(`Zone ${zone.name || "(uden navn)"}: y + height må ikke overstige imageHeight.`);
+  if (zone.allowedTechniques.some((technique) => !TECHNIQUE_SET.has(technique))) {
+    errors.push(`Zone ${zone.name || "(uden navn)"}: indeholder en ukendt teknik.`);
+  }
 
   return errors;
 }
@@ -71,7 +76,7 @@ function toDraft(zone: PrintZone): ZoneDraft {
     maxPhysicalWidthMm: zone.maxPhysicalWidthMm,
     maxPhysicalHeightMm: zone.maxPhysicalHeightMm,
     maxColors: zone.maxColors,
-    allowedTechniques: [...(zone.allowedTechniques as string[])],
+    allowedTechniques: [...zone.allowedTechniques],
   };
 }
 
@@ -86,7 +91,7 @@ function toZone(draft: ZoneDraft, productImageUrl: string): PrintZone {
     maxPhysicalWidthMm: draft.maxPhysicalWidthMm,
     maxPhysicalHeightMm: draft.maxPhysicalHeightMm,
     maxColors: draft.maxColors,
-    allowedTechniques: draft.allowedTechniques as unknown as PrintZone["allowedTechniques"],
+    allowedTechniques: draft.allowedTechniques,
     imageUrl: productImageUrl,
   };
 }
@@ -99,7 +104,7 @@ export function ProductEditorPage() {
   const [zones, setZones] = useState<PrintZone[]>([]);
   const [title, setTitle] = useState("");
 
-  const [techniques, setTechniques] = useState<string[]>([]);
+  const [techniques, setTechniques] = useState<string[]>([...PRINT_TECHNIQUES]);
   const [zoneDraft, setZoneDraft] = useState<ZoneDraft>(EMPTY_DRAFT);
   const [editingZoneId, setEditingZoneId] = useState<string | null>(null);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
@@ -140,7 +145,7 @@ export function ProductEditorPage() {
   const knownTechniques = useMemo(() => {
     const dynamic = new Set(techniques);
     for (const zone of zones) {
-      for (const technique of zone.allowedTechniques as string[]) {
+      for (const technique of zone.allowedTechniques) {
         dynamic.add(technique);
       }
     }
@@ -913,9 +918,7 @@ export function ProductEditorPage() {
                 <p className="text-xs text-muted-foreground">
                   Fysisk: {zone.maxPhysicalWidthMm}×{zone.maxPhysicalHeightMm} mm &nbsp;·&nbsp; Farver: {zone.maxColors || "∞"}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  Teknikker: {(zone.allowedTechniques as string[]).join(", ") || "Ingen"}
-                </p>
+                <p className="text-xs text-muted-foreground">Teknikker: {zone.allowedTechniques.join(", ") || "Ingen"}</p>
               </div>
             ))}
           </CardContent>

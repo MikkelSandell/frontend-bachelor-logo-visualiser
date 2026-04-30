@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { Product, PrintZone } from "@logo-visualizer/shared";
+import { type Product, type PrintZone } from "@logo-visualizer/shared";
 
 const DEV_TOKEN_STORAGE_KEY = "logo-visualizer.admin.dev-token";
 
@@ -29,11 +29,6 @@ const API_FILES_PREFIXES = [
 export type ApiErrorPayload = {
   messages: string[];
   statusCode?: number;
-};
-
-type TechniqueDto = {
-  name?: string;
-  id?: string | number;
 };
 
 type ZoneUpsertPayload = {
@@ -116,11 +111,9 @@ function normalizeProduct(product: Product): Product {
       maxPhysicalWidthMm: Number(zone.maxPhysicalWidthMm),
       maxPhysicalHeightMm: Number(zone.maxPhysicalHeightMm),
       maxColors: Number(zone.maxColors ?? 0),
-      allowedTechniques: (zone.allowedTechniques ?? []).map((t: unknown) => {
-        if (typeof t === "string") return t;
-        if (t && typeof t === "object" && "name" in t) return (t as { name: string }).name;
-        return null;
-      }).filter(Boolean) as PrintZone["allowedTechniques"],
+      allowedTechniques: Array.isArray(zone.allowedTechniques)
+        ? zone.allowedTechniques.filter((technique): technique is string => typeof technique === "string")
+        : [],
       imageUrl: normalizeImageUrl(zone.imageUrl ?? normalizedImageUrl),
     })),
   };
@@ -189,7 +182,7 @@ function toZoneUpsertPayload(zone: PrintZone): ZoneUpsertPayload {
     maxPhysicalWidthMm: Math.round(zone.maxPhysicalWidthMm),
     maxPhysicalHeightMm: Math.round(zone.maxPhysicalHeightMm),
     maxColors: Math.round(zone.maxColors),
-    allowedTechniques: [...(zone.allowedTechniques as string[])],
+    allowedTechniques: [...zone.allowedTechniques],
   };
 }
 
@@ -206,11 +199,11 @@ function toProductUpsertPayload(product: Product): ProductUpsertPayload {
 }
 
 export function parseApiError(error: unknown): ApiErrorPayload {
-  if (error instanceof Error && error.message) {
-    return { messages: [error.message], statusCode: undefined };
-  }
-
   if (!axios.isAxiosError(error)) {
+    if (error instanceof Error && error.message) {
+      return { messages: [error.message], statusCode: undefined };
+    }
+
     return { messages: ["Ukendt fejl. Prøv igen."], statusCode: undefined };
   }
 
@@ -326,11 +319,9 @@ export async function getProductZones(productId: string): Promise<PrintZone[]> {
     maxPhysicalWidthMm: Number(zone.maxPhysicalWidthMm),
     maxPhysicalHeightMm: Number(zone.maxPhysicalHeightMm),
     maxColors: Number(zone.maxColors ?? 0),
-    allowedTechniques: (zone.allowedTechniques ?? []).map((t: unknown) => {
-      if (typeof t === "string") return t;
-      if (t && typeof t === "object" && "name" in t) return (t as { name: string }).name;
-      return null;
-    }).filter(Boolean) as PrintZone["allowedTechniques"],
+    allowedTechniques: Array.isArray(zone.allowedTechniques)
+      ? zone.allowedTechniques.filter((technique): technique is string => typeof technique === "string")
+      : [],
   }));
 }
 
@@ -367,18 +358,13 @@ export async function deleteZone(productId: string, zoneId: string): Promise<voi
 }
 
 export async function getTechniques(): Promise<string[]> {
-  const response = await client.get<string[] | TechniqueDto[] | ApiEnvelope<string[] | TechniqueDto[]>>("/techniques");
+  const response = await client.get<string[] | ApiEnvelope<string[]>>("/techniques");
   const payload = readFromEnvelope(response.data);
   if (!Array.isArray(payload)) {
     return [];
   }
 
-  return payload
-    .map((item) => {
-      if (typeof item === "string") return item;
-      return item.name;
-    })
-    .filter((name): name is string => Boolean(name));
+  return payload.filter((technique): technique is string => typeof technique === "string");
 }
 
 export async function importProducts(file: File): Promise<Product[]> {

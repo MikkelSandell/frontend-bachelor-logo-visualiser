@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { PrintTechnique, PrintZone } from "@logo-visualizer/shared";
+import { PRINT_TECHNIQUES, type PrintTechnique, type PrintZone } from "@logo-visualizer/shared";
 import { cn } from "../../lib/utils";
 
 const TECHNIQUE_LABELS: Record<PrintTechnique, string> = {
@@ -11,12 +11,18 @@ const TECHNIQUE_LABELS: Record<PrintTechnique, string> = {
   pad_print: "Tampontryk",
 };
 
+const PRINT_TECHNIQUE_SET = new Set<string>(PRINT_TECHNIQUES);
+
+function isPrintTechnique(value: string): value is PrintTechnique {
+  return PRINT_TECHNIQUE_SET.has(value);
+}
+
 interface Props {
   zone: PrintZone;
 }
 
 export function TechniqueSelector({ zone }: Props) {
-  const [selected, setSelected] = useState<PrintTechnique | "">(
+  const [selected, setSelected] = useState<string>(
     zone.allowedTechniques[0] ?? ""
   );
 
@@ -35,7 +41,7 @@ export function TechniqueSelector({ zone }: Props) {
                 : "bg-background text-foreground border-input hover:bg-muted"
             )}
           >
-            {TECHNIQUE_LABELS[t]}
+            {isPrintTechnique(t) ? TECHNIQUE_LABELS[t] : t}
           </button>
         ))}
       </div>
