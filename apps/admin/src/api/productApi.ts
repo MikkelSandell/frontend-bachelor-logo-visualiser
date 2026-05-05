@@ -279,7 +279,6 @@ export async function createProduct(payload: CreateProductPayload): Promise<Prod
   const form = new FormData();
   form.append("title", payload.title);
   form.append("image", payload.imageFile);
-  form.append("file", payload.imageFile);
   form.append("imageWidth", String(payload.imageWidth));
   form.append("imageHeight", String(payload.imageHeight));
 

@@ -16,8 +16,7 @@ interface Props {
 export function ZoneSelector({ zones, activeZoneIds, focusedZoneId, onActivate, onFocus, onDeactivate }: Props) {
   return (
     <div className="space-y-1.5">
-      <p className="text-sm font-medium">Printzoner</p>
-      <div className="flex flex-wrap gap-2">
+      <div className="space-y-1.5">
         {zones.map((z) => {
           const isActive = activeZoneIds.includes(z.id);
           const isFocused = focusedZoneId === z.id;
@@ -30,15 +29,21 @@ export function ZoneSelector({ zones, activeZoneIds, focusedZoneId, onActivate, 
                 else onFocus(z.id);
               }}
               className={cn(
-                "px-3 py-1.5 rounded-md text-sm font-medium border transition-colors",
+                "w-full px-3 py-2 rounded-lg text-sm border transition-colors text-left flex items-center justify-between",
                 isFocused
-                  ? "bg-primary text-primary-foreground border-primary ring-2 ring-primary ring-offset-1"
+                  ? "bg-primary text-primary-foreground border-primary ring-1 ring-primary"
                   : isActive
-                  ? "bg-primary text-primary-foreground border-primary"
+                  ? "bg-primary/10 text-foreground border-primary"
                   : "bg-background text-foreground border-input hover:bg-muted"
               )}
             >
-              {z.name}
+              <span className="truncate">{z.name}</span>
+              <span
+                className={cn(
+                  "inline-block h-2 w-2 rounded-full",
+                  isFocused ? "bg-primary-foreground" : isActive ? "bg-primary" : "bg-border"
+                )}
+              />
             </button>
           );
         })}

@@ -331,7 +331,7 @@ export function ProductEditorPage() {
       setProduct(saved);
       setZones(saved.printZones);
       setTitle(saved.title);
-      setSuccessMessage("Produkt og zoner gemt.");
+      setSuccessMessage("Ændringer gemt");
     } catch (error) {
       const apiError = parseApiError(error);
       if (apiError.statusCode === 400) {

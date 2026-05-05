@@ -7,6 +7,7 @@ import type { LogoEntry, TextEntry } from "../../types";
 import { requestExportPng } from "../../api/viewerApi";
 import { Button } from "../ui/button";
 import { Download, Loader2 } from "lucide-react";
+import { cn } from "../../lib/utils";
 
 const MAX_WIDTH = 700;
 
@@ -116,7 +117,11 @@ export function ProductCanvas({
   // Which canvas element (logo or text) is currently selected for the Transformer
   const [focusedElement, setFocusedElement] = useState<FocusedElement>(null);
   const [exporting, setExporting] = useState(false);
+  const [exportSuccess, setExportSuccess] = useState<string | null>(null);
+  const [errorMessages, setErrorMessages] = useState<string[]>([]);
+  const [canvasCursor, setCanvasCursor] = useState<"default" | "move" | "nwse-resize">("default");
 
+  const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const nodeRefs = useRef<Record<string, Konva.Image | null>>({});
   const textNodeRefs = useRef<Record<string, Konva.Text | null>>({});
@@ -243,6 +248,9 @@ export function ProductCanvas({
   // ─── Export ───────────────────────────────────────────────────────────────
 
   async function handleExportPng() {
+    setErrorMessages([]);
+    setExportSuccess(null);
+
     const logoPlacements = visibleZones.flatMap((zone) => {
       const state = logoStates[zone.id];
       const logoId = zoneLogoAssignments[zone.id];
@@ -272,7 +280,7 @@ export function ProductCanvas({
     });
 
     if (logoPlacements.length === 0 && textPlacements.length === 0) {
-      alert("Ingen logoer eller tekster er placeret på den nuværende side.");
+      setErrorMessages(["Ingen logoer eller tekster er placeret på den nuværende side."]);
       return;
     }
 
@@ -292,11 +300,30 @@ export function ProductCanvas({
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+      setExportSuccess("Download startet");
     } catch (error) {
       console.error("PNG eksport fejl:", error);
-      alert("Kunne ikke eksportere PNG fra backend.");
+      if (typeof error === "object" && error !== null) {
+        const maybe = error as {
+          response?: { data?: { messages?: string[]; message?: string } };
+          message?: string;
+        };
+        const backendMessages = maybe.response?.data?.messages;
+        if (Array.isArray(backendMessages) && backendMessages.length > 0) {
+          setErrorMessages(backendMessages);
+        } else if (maybe.response?.data?.message) {
+          setErrorMessages([maybe.response.data.message]);
+        } else if (maybe.message) {
+          setErrorMessages([maybe.message]);
+        } else {
+          setErrorMessages(["Kunne ikke eksportere PNG fra backend."]);
+        }
+      } else {
+        setErrorMessages(["Kunne ikke eksportere PNG fra backend."]);
+      }
     } finally {
       setExporting(false);
+      setCanvasCursor("default");
     }
   }
 
@@ -310,17 +337,35 @@ export function ProductCanvas({
     setTextStates((prev) => ({ ...prev, [zoneId]: { ...prev[zoneId], ...patch } }));
   }
 
+  const focusedLogoState =
+    focusedElement?.type === "logo" ? logoStates[focusedElement.zoneId] : null;
+
   return (
-    <div className="space-y-3">
-      <div className="overflow-auto">
-        <Stage
-          width={canvasWidth}
-          height={canvasHeight}
-          style={{ border: "1px solid #e8e8e8", borderRadius: "0.5rem" }}
-          onMouseDown={(e) => {
-            if (e.target === e.target.getStage()) setFocusedElement(null);
-          }}
-        >
+    <div className="space-y-3 w-full">
+      {errorMessages.length > 0 && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 space-y-1">
+          {errorMessages.map((message) => (
+            <p key={message}>• {message}</p>
+          ))}
+        </div>
+      )}
+
+      {exportSuccess && (
+        <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+          {exportSuccess}
+        </div>
+      )}
+
+      <div className={cn("w-full overflow-auto flex justify-center", canvasCursor === "move" ? "cursor-move" : canvasCursor === "nwse-resize" ? "cursor-nwse-resize" : "cursor-default")}>
+        <div className="inline-block rounded-xl border border-border bg-white shadow-sm overflow-hidden">
+          <Stage
+            ref={stageRef}
+            width={canvasWidth}
+            height={canvasHeight}
+            onMouseDown={(e) => {
+              if (e.target === e.target.getStage()) setFocusedElement(null);
+            }}
+          >
           <Layer>
             {productImage && (
               <KonvaImage image={productImage} width={canvasWidth} height={canvasHeight} />
@@ -338,16 +383,34 @@ export function ProductCanvas({
                   y={zone.y * scale}
                   width={zone.width  * scale}
                   height={zone.height * scale}
-                  stroke={isFocused ? "#ff6633" : isActive ? "#ff9966" : "#bbbbbb"}
-                  strokeWidth={isFocused ? 2 : 1}
+                  stroke={isFocused ? "#d9480f" : isActive ? "#ff9966" : "#bbbbbb"}
+                  strokeWidth={isFocused ? 3 : 1}
                   dash={[6, 3]}
                   fill={
                     isFocused
-                      ? "rgba(255,102,51,0.06)"
+                      ? "rgba(255,102,51,0.11)"
                       : isActive
                       ? "rgba(255,102,51,0.03)"
                       : "transparent"
                   }
+                />
+              );
+            })}
+
+            {/* Zone labels — always visible */}
+            {allSideZones.map((zone) => {
+              const dispX = displayXForZone(zone);
+              const isFocused = focusedZoneId === zone.id;
+              return (
+                <KonvaText
+                  key={`zone-label-${zone.id}`}
+                  x={dispX * scale + 5}
+                  y={zone.y * scale + 5}
+                  text={zone.name}
+                  fontSize={12}
+                  fill={isFocused ? "#d9480f" : "#6b7280"}
+                  fontStyle={isFocused ? "bold" : "normal"}
+                  listening={false}
                 />
               );
             })}
@@ -371,13 +434,20 @@ export function ProductCanvas({
                   draggable={isLogoFocused}
                   onClick={() => { setFocusedElement({ zoneId: zone.id, type: "logo" }); onFocusZone(zone.id); }}
                   onTap={() => { setFocusedElement({ zoneId: zone.id, type: "logo" }); onFocusZone(zone.id); }}
+                  onMouseEnter={() => {
+                    if (isLogoFocused) setCanvasCursor("move");
+                  }}
+                  onMouseLeave={() => setCanvasCursor("default")}
+                  onDragStart={() => setCanvasCursor("move")}
                   dragBoundFunc={(pos) =>
                     clampToZone(pos.x, pos.y, state.width, state.height, zone)
                   }
                   onDragEnd={(e) => {
                     const { x, y } = e.target.position();
                     setLogoStates((prev) => ({ ...prev, [zone.id]: { ...prev[zone.id], x, y } }));
+                    setCanvasCursor("move");
                   }}
+                  onTransformStart={() => setCanvasCursor("nwse-resize")}
                   onTransformEnd={(e) => {
                     const node = e.target as Konva.Image;
                     const newWidth  = Math.max(20, node.width()  * node.scaleX());
@@ -389,10 +459,24 @@ export function ProductCanvas({
                       ...prev,
                       [zone.id]: { x: clamped.x, y: clamped.y, width: newWidth, height: newHeight },
                     }));
+                    setCanvasCursor("move");
                   }}
                 />
               );
             })}
+
+            {focusedElement?.type === "logo" && focusedLogoState && (
+              <Rect
+                x={focusedLogoState.x}
+                y={focusedLogoState.y}
+                width={focusedLogoState.width}
+                height={focusedLogoState.height}
+                stroke="#d9480f"
+                strokeWidth={1.5}
+                dash={[4, 2]}
+                listening={false}
+              />
+            )}
 
             {/* Per-zone text items */}
             {visibleZones.map((zone) => {
@@ -409,7 +493,7 @@ export function ProductCanvas({
                   y={state.y}
                   fontSize={state.fontSize * scale}
                   fill={state.color}
-                  fontFamily="Arial, sans-serif"
+                  fontFamily="Inter, sans-serif"
                   draggable
                   onClick={() => { setFocusedElement({ zoneId: zone.id, type: "text" }); onFocusZone(zone.id); }}
                   onTap={() => { setFocusedElement({ zoneId: zone.id, type: "text" }); onFocusZone(zone.id); }}
@@ -429,6 +513,7 @@ export function ProductCanvas({
                     const newFontSize = Math.max(8, (node.fontSize() * node.scaleY()) / scale);
                     node.scaleX(1); node.scaleY(1);
                     updateTextState(zone.id, { x: node.x(), y: node.y(), fontSize: newFontSize });
+                    setCanvasCursor("default");
                   }}
                 />
               );
@@ -445,6 +530,12 @@ export function ProductCanvas({
                   : ["top-left", "top-right", "bottom-left", "bottom-right",
                      "middle-left", "middle-right", "top-center", "bottom-center"]
               }
+              borderStroke="#d9480f"
+              borderStrokeWidth={1.5}
+              anchorFill="#ffffff"
+              anchorStroke="#d9480f"
+              anchorStrokeWidth={1.5}
+              anchorSize={8}
               boundBoxFunc={(oldBox, newBox) => {
                 if (!focusedElement) return oldBox;
                 const zone = product.printZones.find((z) => z.id === focusedElement.zoneId);
@@ -461,7 +552,8 @@ export function ProductCanvas({
               }}
             />
           </Layer>
-        </Stage>
+          </Stage>
+        </div>
       </div>
 
       {/* Font controls — shown when a text element is focused */}
@@ -496,7 +588,13 @@ export function ProductCanvas({
         </div>
       )}
 
-      <Button variant="outline" size="sm" onClick={handleExportPng} disabled={exporting}>
+      {logos.length === 0 && (
+        <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+          Upload dit logo
+        </div>
+      )}
+
+      <Button variant="outline" size="sm" onClick={handleExportPng} disabled={exporting || logos.length === 0} className="w-full sm:w-auto">
         {exporting
           ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
           : <Download className="h-4 w-4 mr-2" />

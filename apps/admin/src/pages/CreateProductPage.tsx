@@ -7,6 +7,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg"]);
+const FILE_TYPE_ERROR = "Produktbillede skal være PNG eller JPG.";
+const FILE_SIZE_ERROR = "Produktbillede må højst være 10 MB.";
+
 export function CreateProductPage() {
   const navigate = useNavigate();
 
@@ -16,6 +21,63 @@ export function CreateProductPage() {
   const [imageHeight, setImageHeight] = useState(1200);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
+
+  function readImageDimensions(file: File): Promise<{ width: number; height: number } | null> {
+    return new Promise((resolve) => {
+      const imageUrl = URL.createObjectURL(file);
+      const image = new Image();
+
+      image.onload = () => {
+        const width = Number(image.naturalWidth);
+        const height = Number(image.naturalHeight);
+        URL.revokeObjectURL(imageUrl);
+        if (width > 0 && height > 0) {
+          resolve({ width, height });
+          return;
+        }
+        resolve(null);
+      };
+
+      image.onerror = () => {
+        URL.revokeObjectURL(imageUrl);
+        resolve(null);
+      };
+
+      image.src = imageUrl;
+    });
+  }
+
+  async function handleImageChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    setImageFile(file);
+
+    if (!file) {
+      return;
+    }
+
+    const nextErrors: string[] = [];
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+      nextErrors.push(FILE_TYPE_ERROR);
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      nextErrors.push(FILE_SIZE_ERROR);
+    }
+
+    if (nextErrors.length > 0) {
+      setErrors(nextErrors);
+      return;
+    }
+
+    setErrors((prev) =>
+      prev.filter((message) => message !== FILE_TYPE_ERROR && message !== FILE_SIZE_ERROR)
+    );
+
+    const dimensions = await readImageDimensions(file);
+    if (dimensions) {
+      setImageWidth(dimensions.width);
+      setImageHeight(dimensions.height);
+    }
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -27,6 +89,12 @@ export function CreateProductPage() {
     }
     if (!imageFile) {
       nextErrors.push("Du skal vælge et produktbillede.");
+    }
+    if (imageFile && !ALLOWED_IMAGE_TYPES.has(imageFile.type)) {
+      nextErrors.push(FILE_TYPE_ERROR);
+    }
+    if (imageFile && imageFile.size > MAX_IMAGE_BYTES) {
+      nextErrors.push(FILE_SIZE_ERROR);
     }
     if (imageWidth <= 0 || imageHeight <= 0) {
       nextErrors.push("Billedbredde og billedhøjde skal være større end 0.");
@@ -90,10 +158,15 @@ export function CreateProductPage() {
               <Input
                 id="image"
                 type="file"
-                accept="image/*"
-                onChange={(event) => setImageFile(event.target.files?.[0] ?? null)}
+                accept="image/png,image/jpeg"
+                onChange={(event) => {
+                  void handleImageChange(event);
+                }}
                 required
               />
+              <p className="text-xs text-muted-foreground">
+                PNG eller JPG, maks 10 MB. Billedbredde og -højde udfyldes automatisk når muligt.
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

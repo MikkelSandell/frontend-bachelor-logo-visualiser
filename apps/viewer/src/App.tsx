@@ -168,25 +168,25 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <div className="bg-primary text-primary-foreground">
-        <div className="container mx-auto px-4 py-2">
+    <div className="min-h-screen flex flex-col bg-[#f3f4f6]">
+      <div className="bg-primary text-primary-foreground shadow-sm">
+        <div className="max-w-[1600px] mx-auto px-4 py-3 md:px-6">
           <span className="font-semibold text-sm tracking-wide">Logo Visualizer</span>
         </div>
       </div>
 
-      <main className="flex-1 container mx-auto px-4 py-6 space-y-6">
+      <main className="flex-1 max-w-[1600px] mx-auto w-full px-4 py-6 md:px-6">
 
         {!product && (
           <div className="space-y-3">
             <h2 className="text-lg font-semibold">Vælg et produkt</h2>
             {loadingProducts ? (
-              <div className="flex items-center gap-2 text-muted-foreground text-sm">
+              <div className="flex items-center gap-2 text-muted-foreground text-sm bg-white border border-border rounded-xl px-4 py-6 shadow-sm">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Indlæser produkter…
               </div>
             ) : (
-              <>
+              <div className="bg-white border border-border rounded-xl p-4 md:p-5 shadow-sm space-y-4">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                   <Input
@@ -233,126 +233,177 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                     </div>
                   );
                 })()}
-              </>
+              </div>
             )}
           </div>
         )}
 
         {product && (
-          <div className="space-y-4">
-            <button
-              className="text-sm text-primary hover:underline"
-              onClick={() => {
-                setProduct(null);
-                setActiveZoneIds([]);
-                setFocusedZoneId(null);
-                setZoneLogoAssignments({});
-                setZoneTextAssignments({});
-              }}
-            >
-              ← Vælg andet produkt
-            </button>
+          <div className="grid gap-4 lg:gap-6 lg:grid-cols-[250px_minmax(0,1fr)_300px] min-h-[calc(100vh-130px)]">
+            <aside className="bg-white border border-border rounded-xl p-4 shadow-sm space-y-4 lg:max-h-[calc(100vh-150px)] lg:overflow-auto">
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Produkt</p>
+                <Card className="border-border shadow-none">
+                  <CardContent className="p-3">
+                    <p className="text-sm font-semibold truncate">{product.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {product.printZones.length} {product.printZones.length === 1 ? "zone" : "zoner"}
+                    </p>
+                  </CardContent>
+                </Card>
+                <button
+                  className="text-sm text-primary hover:underline"
+                  onClick={() => {
+                    setProduct(null);
+                    setActiveZoneIds([]);
+                    setFocusedZoneId(null);
+                    setZoneLogoAssignments({});
+                    setZoneTextAssignments({});
+                  }}
+                >
+                  ← Vælg andet produkt
+                </button>
+              </div>
 
-            {/* V1 – logo library */}
-            <LogoUploader
-              logos={logos}
-              onLogoUploaded={handleLogoUploaded}
-              onLogoRemoved={handleLogoRemoved}
-            />
-
-            {/* Text library */}
-            <TextLibrary
-              texts={texts}
-              onTextAdded={handleTextAdded}
-              onTextRemoved={handleTextRemoved}
-              onTextEdited={handleTextEdited}
-            />
-
-            {/* V3 – zone multi-selector */}
-            {product.printZones.length > 1 && (
-              <ZoneSelector
-                zones={product.printZones}
-                activeZoneIds={activeZoneIds}
-                focusedZoneId={focusedZoneId}
-                onActivate={handleZoneToggle}
-                onFocus={(id) => {
-                  setFocusedZoneId(id);
-                  setViewedZoneId(toSideZoneId(id, product!));
-                }}
-                onDeactivate={handleZoneDeactivate}
-              />
-            )}
-
-            {/* Logo picker — when multiple logos and a zone is focused */}
-            {logos.length > 1 && focusedZoneId && focusedZone && (
-              <LogoPicker
-                logos={logos}
-                zone={focusedZone}
-                assignedLogoId={zoneLogoAssignments[focusedZoneId] ?? null}
-                onAssign={(logoId) => handleAssignLogo(focusedZoneId, logoId)}
-              />
-            )}
-
-            {/* Text picker — when multiple texts and a zone is focused */}
-            {texts.length > 1 && focusedZoneId && focusedZone && (
-              <TextPicker
-                texts={texts}
-                zone={focusedZone}
-                assignedTextId={zoneTextAssignments[focusedZoneId] ?? null}
-                onAssign={(textId) => handleAssignText(focusedZoneId, textId)}
-              />
-            )}
-
-            {/* Side viewer */}
-            {(() => {
-              const sides = product.printZones.filter((z) =>
-                /^(front|back)$/i.test(z.name)
-              );
-              return sides.length > 1 ? (
-                <div className="space-y-1.5">
-                  <p className="text-sm font-medium text-muted-foreground">Se side</p>
-                  <div className="flex flex-wrap gap-2">
-                    {sides.map((z) => (
-                      <button
-                        key={z.id}
-                        onClick={() => setViewedZoneId(z.id)}
-                        className={cn(
-                          "px-3 py-1.5 rounded-md text-sm border transition-colors",
-                          viewedZoneId === z.id
-                            ? "bg-muted border-foreground/30 font-medium"
-                            : "bg-background text-muted-foreground border-input hover:bg-muted"
-                        )}
-                      >
-                        {z.name}
-                        {activeZoneIds.includes(z.id) && (
-                          <span
-                            className="ml-1.5 inline-block w-2 h-2 rounded-full bg-primary align-middle"
-                            title="Logo placeret på denne side"
-                          />
-                        )}
-                      </button>
-                    ))}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Printzoner</p>
+                {product.printZones.length > 1 ? (
+                  <ZoneSelector
+                    zones={product.printZones}
+                    activeZoneIds={activeZoneIds}
+                    focusedZoneId={focusedZoneId}
+                    onActivate={handleZoneToggle}
+                    onFocus={(id) => {
+                      setFocusedZoneId(id);
+                      setViewedZoneId(toSideZoneId(id, product!));
+                    }}
+                    onDeactivate={handleZoneDeactivate}
+                  />
+                ) : (
+                  <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm">
+                    {product.printZones[0]?.name ?? "Standardzone"}
                   </div>
+                )}
+              </div>
+
+              {(() => {
+                const sides = product.printZones.filter((z) =>
+                  /^(front|back)$/i.test(z.name)
+                );
+                return sides.length > 1 ? (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Visning</p>
+                    <div className="space-y-1.5">
+                      {sides.map((z) => (
+                        <button
+                          key={z.id}
+                          onClick={() => setViewedZoneId(z.id)}
+                          className={cn(
+                            "w-full px-3 py-2 rounded-lg text-sm border transition-colors flex items-center justify-between",
+                            viewedZoneId === z.id
+                              ? "bg-primary/10 border-primary text-foreground font-medium"
+                              : "bg-background text-muted-foreground border-input hover:bg-muted"
+                          )}
+                        >
+                          <span>{z.name}</span>
+                          {activeZoneIds.includes(z.id) ? (
+                            <span
+                              className="inline-block w-2 h-2 rounded-full bg-primary"
+                              title="Logo placeret på denne side"
+                            />
+                          ) : (
+                            <span className="inline-block w-2 h-2 rounded-full bg-border" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null;
+              })()}
+            </aside>
+
+            <section className="bg-white border border-border rounded-xl shadow-sm p-4 md:p-6 flex flex-col">
+              <div className="mb-4">
+                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Design workspace</p>
+                <h2 className="text-lg md:text-xl font-semibold">Placering på produkt</h2>
+              </div>
+              <div className="flex-1 rounded-xl border border-border bg-[#f8f9fb] p-3 md:p-4 flex items-center justify-center">
+                <ProductCanvas
+                  product={product}
+                  logos={logos}
+                  zoneLogoAssignments={zoneLogoAssignments}
+                  texts={texts}
+                  zoneTextAssignments={zoneTextAssignments}
+                  activeZoneIds={activeZoneIds}
+                  focusedZoneId={focusedZoneId}
+                  viewedZoneId={viewedZoneId}
+                  onFocusZone={(id) => { setFocusedZoneId(id); }}
+                  onProductLoaded={() => {}}
+                />
+              </div>
+            </section>
+
+            <aside className="bg-white border border-border rounded-xl p-4 shadow-sm space-y-4 lg:max-h-[calc(100vh-150px)] lg:overflow-auto">
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Valgt zone</p>
+                <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+                  <p className="text-sm font-medium">
+                    {focusedZone?.name ?? "Vælg en print-zone"}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {focusedZone ? "Vælg teknik og indhold til zonen" : "Vælg en zone i venstre panel eller på billedet"}
+                  </p>
                 </div>
-              ) : null;
-            })()}
+              </div>
 
-            {/* V2-V6 – main canvas */}
-            <ProductCanvas
-              product={product}
-              logos={logos}
-              zoneLogoAssignments={zoneLogoAssignments}
-              texts={texts}
-              zoneTextAssignments={zoneTextAssignments}
-              activeZoneIds={activeZoneIds}
-              focusedZoneId={focusedZoneId}
-              viewedZoneId={viewedZoneId}
-              onFocusZone={(id) => { setFocusedZoneId(id); }}
-              onProductLoaded={() => {}}
-            />
+              <div className="space-y-2">
+                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Teknik</p>
+                <TechniqueSelector zone={focusedZone} disabled={!focusedZone} />
+              </div>
 
-            {/* V7 – technique selector for the focused zone */}
-            {focusedZone && <TechniqueSelector zone={focusedZone} />}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Handlinger</p>
+                <LogoUploader
+                  logos={logos}
+                  onLogoUploaded={handleLogoUploaded}
+                  onLogoRemoved={handleLogoRemoved}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Tekstbibliotek</p>
+                <TextLibrary
+                  texts={texts}
+                  onTextAdded={handleTextAdded}
+                  onTextRemoved={handleTextRemoved}
+                  onTextEdited={handleTextEdited}
+                />
+              </div>
+
+              {logos.length > 1 && focusedZoneId && focusedZone && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Vælg logo</p>
+                  <LogoPicker
+                    logos={logos}
+                    zone={focusedZone}
+                    assignedLogoId={zoneLogoAssignments[focusedZoneId] ?? null}
+                    onAssign={(logoId) => handleAssignLogo(focusedZoneId, logoId)}
+                  />
+                </div>
+              )}
+
+              {texts.length > 1 && focusedZoneId && focusedZone && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Vælg tekst</p>
+                  <TextPicker
+                    texts={texts}
+                    zone={focusedZone}
+                    assignedTextId={zoneTextAssignments[focusedZoneId] ?? null}
+                    onAssign={(textId) => handleAssignText(focusedZoneId, textId)}
+                  />
+                </div>
+              )}
+            </aside>
           </div>
         )}
       </main>

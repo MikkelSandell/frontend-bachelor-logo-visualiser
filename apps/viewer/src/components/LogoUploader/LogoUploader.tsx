@@ -11,28 +11,61 @@ interface Props {
 }
 
 const ACCEPTED = "image/png,image/jpeg,image/svg+xml";
+const MIN_UPLOAD_BYTES = 1024;
 
 export function LogoUploader({ logos, onLogoUploaded, onLogoRemoved }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  const [errorMessages, setErrorMessages] = useState<string[]>([]);
+
+  function parseMessages(error: unknown): string[] {
+    if (typeof error === "object" && error !== null) {
+      const maybe = error as {
+        response?: { data?: { messages?: string[]; message?: string } };
+        message?: string;
+      };
+      const backendMessages = maybe.response?.data?.messages;
+      if (Array.isArray(backendMessages) && backendMessages.length > 0) {
+        return backendMessages;
+      }
+      if (maybe.response?.data?.message) {
+        return [maybe.response.data.message];
+      }
+      if (maybe.message) {
+        return [maybe.message];
+      }
+    }
+    return ["Ukendt fejl under upload."];
+  }
 
   async function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
 
+    if (file.size < MIN_UPLOAD_BYTES) {
+      setUploadSuccess(null);
+      setErrorMessages([
+        "Filen er for lille eller ugyldig. Upload venligst et rigtigt PNG, JPG eller SVG-logo.",
+      ]);
+      return;
+    }
+
     setUploading(true);
+    setUploadSuccess(null);
+    setErrorMessages([]);
     try {
       const response = await uploadLogo(file);
       const data = (response as any).data || response;
       if (data?.logoUrl && data?.logoId) {
         onLogoUploaded({ id: data.logoId, url: data.logoUrl, name: file.name });
+        setUploadSuccess("Logo uploadet");
       } else {
-        alert("Logo upload fejlede: Manglende felter");
+        setErrorMessages(["Logo upload fejlede: Manglende felter"]);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Ukendt fejl";
-      alert(`Kunne ikke uploade logo: ${message}`);
+      setErrorMessages(parseMessages(error));
     } finally {
       setUploading(false);
     }
@@ -42,7 +75,19 @@ export function LogoUploader({ logos, onLogoUploaded, onLogoRemoved }: Props) {
   if (logos.length === 0) {
     return (
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 space-y-3">
+          {errorMessages.length > 0 && (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 space-y-1">
+              {errorMessages.map((message) => (
+                <p key={message}>• {message}</p>
+              ))}
+            </div>
+          )}
+          {uploadSuccess && (
+            <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+              {uploadSuccess}
+            </div>
+          )}
           <label className="flex flex-col items-center justify-center gap-3 py-8 border-2 border-dashed border-border rounded-md cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors">
             <Upload className="h-8 w-8 text-muted-foreground" />
             <div className="text-center">
@@ -69,7 +114,19 @@ export function LogoUploader({ logos, onLogoUploaded, onLogoRemoved }: Props) {
 
   // Logos exist — show logo library
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      {errorMessages.length > 0 && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 space-y-1">
+          {errorMessages.map((message) => (
+            <p key={message}>• {message}</p>
+          ))}
+        </div>
+      )}
+      {uploadSuccess && (
+        <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+          {uploadSuccess}
+        </div>
+      )}
       <p className="text-sm font-medium">Logoer</p>
       <div className="flex flex-wrap gap-2 items-start">
         {logos.map((logo) => (
@@ -89,6 +146,7 @@ export function LogoUploader({ logos, onLogoUploaded, onLogoRemoved }: Props) {
             </p>
             <button
               onClick={() => onLogoRemoved(logo.id)}
+              disabled={uploading}
               className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-foreground text-background flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
               title="Fjern logo"
             >

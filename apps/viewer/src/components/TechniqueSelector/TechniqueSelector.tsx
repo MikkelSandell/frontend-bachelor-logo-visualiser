@@ -18,19 +18,32 @@ function isPrintTechnique(value: string): value is PrintTechnique {
 }
 
 interface Props {
-  zone: PrintZone;
+  zone: PrintZone | null;
+  disabled?: boolean;
 }
 
-export function TechniqueSelector({ zone }: Props) {
+export function TechniqueSelector({ zone, disabled = false }: Props) {
+  const techniques = zone?.allowedTechniques ?? [];
   const [selected, setSelected] = useState<string>(
-    zone.allowedTechniques[0] ?? ""
+    techniques[0] ?? ""
   );
+
+  if (!zone || disabled) {
+    return (
+      <div className="space-y-1.5">
+        <p className="text-sm font-medium">Print-teknik</p>
+        <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+          Vælg en print-zone
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-1.5">
       <p className="text-sm font-medium">Print-teknik</p>
       <div className="flex flex-wrap gap-2">
-        {zone.allowedTechniques.map((t) => (
+        {techniques.map((t) => (
           <button
             key={t}
             onClick={() => setSelected(t)}
