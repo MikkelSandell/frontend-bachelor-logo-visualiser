@@ -88,7 +88,7 @@ export function LogoUploader({ logos, onLogoUploaded, onLogoRemoved }: Props) {
               {uploadSuccess}
             </div>
           )}
-          <label className="flex flex-col items-center justify-center gap-3 py-8 border-2 border-dashed border-border rounded-md cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors">
+          <label className="flex flex-col items-center justify-center gap-3 py-8 min-h-[140px] border-2 border-dashed border-primary/30 rounded-lg cursor-pointer hover:border-primary/60 hover:bg-primary/5 transition-colors">
             <Upload className="h-8 w-8 text-muted-foreground" />
             <div className="text-center">
               <p className="text-sm font-medium">

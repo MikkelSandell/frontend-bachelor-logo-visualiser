@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { createProduct, parseApiError } from "../api/productApi";
@@ -21,6 +21,15 @@ export function CreateProductPage() {
   const [imageHeight, setImageHeight] = useState(1200);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  // Revoke object URL when component unmounts or when file changes
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewUrl]);
 
   function readImageDimensions(file: File): Promise<{ width: number; height: number } | null> {
     return new Promise((resolve) => {
@@ -51,6 +60,11 @@ export function CreateProductPage() {
     const file = event.target.files?.[0] ?? null;
     setImageFile(file);
 
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+
     if (!file) {
       return;
     }
@@ -71,6 +85,8 @@ export function CreateProductPage() {
     setErrors((prev) =>
       prev.filter((message) => message !== FILE_TYPE_ERROR && message !== FILE_SIZE_ERROR)
     );
+
+    setPreviewUrl(URL.createObjectURL(file));
 
     const dimensions = await readImageDimensions(file);
     if (dimensions) {
@@ -169,31 +185,80 @@ export function CreateProductPage() {
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="image-width">Billedbredde (px)</Label>
-                <Input
-                  id="image-width"
-                  type="number"
-                  min={1}
-                  value={imageWidth}
-                  onChange={(event) => setImageWidth(Number(event.target.value))}
-                  required
-                />
+            {/* Image preview + auto-detected dimensions */}
+            {previewUrl ? (
+              <div className="rounded-lg border border-border bg-muted/30 p-3 flex items-center gap-4">
+                <div className="w-20 h-20 rounded-md border border-border bg-white overflow-hidden flex items-center justify-center flex-shrink-0">
+                  <img
+                    src={previewUrl}
+                    alt="Forhåndsvisning"
+                    className="max-w-full max-h-full object-contain"
+                  />
+                </div>
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <p className="text-sm font-medium truncate">{imageFile?.name}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                      {imageWidth} × {imageHeight} px
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {imageFile ? (imageFile.size / 1024).toFixed(0) + " KB" : ""}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="image-width" className="text-xs">Bredde (px)</Label>
+                      <Input
+                        id="image-width"
+                        type="number"
+                        min={1}
+                        value={imageWidth}
+                        onChange={(event) => setImageWidth(Number(event.target.value))}
+                        required
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-0.5">
+                      <Label htmlFor="image-height" className="text-xs">Højde (px)</Label>
+                      <Input
+                        id="image-height"
+                        type="number"
+                        min={1}
+                        value={imageHeight}
+                        onChange={(event) => setImageHeight(Number(event.target.value))}
+                        required
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="image-height">Billedhøjde (px)</Label>
-                <Input
-                  id="image-height"
-                  type="number"
-                  min={1}
-                  value={imageHeight}
-                  onChange={(event) => setImageHeight(Number(event.target.value))}
-                  required
-                />
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="image-width">Billedbredde (px)</Label>
+                  <Input
+                    id="image-width"
+                    type="number"
+                    min={1}
+                    value={imageWidth}
+                    onChange={(event) => setImageWidth(Number(event.target.value))}
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="image-height">Billedhøjde (px)</Label>
+                  <Input
+                    id="image-height"
+                    type="number"
+                    min={1}
+                    value={imageHeight}
+                    onChange={(event) => setImageHeight(Number(event.target.value))}
+                    required
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             {errors.length > 0 && (
               <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">

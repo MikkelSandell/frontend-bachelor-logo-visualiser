@@ -346,20 +346,35 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
             <aside className="bg-white border border-border rounded-xl p-4 shadow-sm space-y-4 lg:max-h-[calc(100vh-150px)] lg:overflow-auto">
               <div className="space-y-1.5">
                 <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Valgt zone</p>
-                <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-                  <p className="text-sm font-medium">
-                    {focusedZone?.name ?? "Vælg en print-zone"}
-                  </p>
+                <div className={cn(
+                  "rounded-lg border px-3 py-2.5 transition-colors",
+                  focusedZone ? "border-primary/40 bg-primary/5" : "border-border bg-muted/30"
+                )}>
+                  <div className="flex items-center gap-2">
+                    {focusedZone && (
+                      <span className="inline-block h-2 w-2 rounded-full bg-primary flex-shrink-0" />
+                    )}
+                    <p className={cn(
+                      "text-sm font-medium",
+                      focusedZone ? "text-foreground" : "text-muted-foreground"
+                    )}>
+                      {focusedZone?.name ?? "Vælg en print-zone"}
+                    </p>
+                  </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {focusedZone ? "Vælg teknik og indhold til zonen" : "Vælg en zone i venstre panel eller på billedet"}
+                    {focusedZone ? "Tilpas teknik og placér logo" : "Vælg en zone i venstre panel eller på billedet"}
                   </p>
                 </div>
               </div>
+
+              <hr className="border-border" />
 
               <div className="space-y-2">
                 <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Teknik</p>
                 <TechniqueSelector zone={focusedZone} disabled={!focusedZone} />
               </div>
+
+              <hr className="border-border" />
 
               <div className="space-y-2">
                 <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Handlinger</p>

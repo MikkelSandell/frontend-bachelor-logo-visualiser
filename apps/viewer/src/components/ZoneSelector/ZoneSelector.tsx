@@ -49,7 +49,7 @@ export function ZoneSelector({ zones, activeZoneIds, focusedZoneId, onActivate, 
         })}
       </div>
       <p className="text-xs text-muted-foreground">
-        Klik for at tilføje · klik igen for at fjerne
+        Klik for at vælge zone · klik den markerede for at fjerne
       </p>
     </div>
   );

@@ -589,12 +589,13 @@ export function ProductCanvas({
       )}
 
       {logos.length === 0 && (
-        <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-          Upload dit logo
+        <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-sm text-muted-foreground flex items-center gap-2">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-border" />
+          Upload dit logo i højre panel for at aktivere download
         </div>
       )}
 
-      <Button variant="outline" size="sm" onClick={handleExportPng} disabled={exporting || logos.length === 0} className="w-full sm:w-auto">
+      <Button size="sm" onClick={handleExportPng} disabled={exporting || logos.length === 0} className="w-full sm:w-auto">
         {exporting
           ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
           : <Download className="h-4 w-4 mr-2" />
