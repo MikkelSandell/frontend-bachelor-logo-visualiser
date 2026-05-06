@@ -85,10 +85,6 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
     setActiveZoneIds((prev) => [...prev, id]);
     setFocusedZoneId(id);
     setViewedZoneId(toSideZoneId(id, product!));
-    if (logos.length === 1)
-      setZoneLogoAssignments((prev) => ({ ...prev, [id]: logos[0].id }));
-    if (texts.length === 1)
-      setZoneTextAssignments((prev) => ({ ...prev, [id]: texts[0].id }));
   }
 
   function handleZoneDeactivate(id: string) {
@@ -105,13 +101,6 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
 
   function handleLogoUploaded(logo: LogoEntry) {
     setLogos((prev) => [...prev, logo]);
-    if (logos.length === 0) {
-      setZoneLogoAssignments((prev) => {
-        const next = { ...prev };
-        for (const zoneId of activeZoneIds) if (!next[zoneId]) next[zoneId] = logo.id;
-        return next;
-      });
-    }
   }
 
   function handleLogoRemoved(id: string) {
@@ -142,13 +131,6 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
 
   function handleTextAdded(entry: TextEntry) {
     setTexts((prev) => [...prev, entry]);
-    if (texts.length === 0) {
-      setZoneTextAssignments((prev) => {
-        const next = { ...prev };
-        for (const zoneId of activeZoneIds) if (!next[zoneId]) next[zoneId] = entry.id;
-        return next;
-      });
-    }
   }
 
   function handleTextRemoved(id: string) {
