@@ -97,9 +97,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
     setZoneTextAssignments((prev) => { const n = { ...prev }; delete n[id]; return n; });
     if (focusedZoneId === id) {
       const remaining = activeZoneIds.filter((z) => z !== id);
-      const next = remaining[0] ?? null;
-      setFocusedZoneId(next);
-      if (next) setViewedZoneId(toSideZoneId(next, product!));
+      setFocusedZoneId(remaining[0] ?? null);
     }
   }
 
