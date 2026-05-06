@@ -15,11 +15,9 @@ frontend/
 │   └── src/
 │       ├── types.ts              # LogoEntry { id, url, name }, TextEntry { id, text }
 │       ├── components/
-│       │   ├── LogoUploader/     # multi-logo library (upload / remove)
-│       │   ├── LogoPicker/       # assign logo to focused zone (shown when logos > 1)
-│       │   ├── TextLibrary/      # add / edit (double-click) / remove text entries
-│       │   ├── TextPicker/       # assign text to focused zone (shown when texts > 1)
-│       │   ├── ProductCanvas/    # Konva canvas — logos + text, shared Transformer
+│       │   ├── LogoUploader/     # upload + assign/deselect logo per zone (picker merged in)
+│       │   ├── TextLibrary/      # add / edit (double-click) / remove + assign/deselect text per zone (picker merged in)
+│       │   ├── ProductCanvas/    # Konva canvas — logos + text, shared Transformer; forwardRef with ProductCanvasHandle { exportPng }
 │       │   ├── ZoneSelector/
 │       │   └── TechniqueSelector/
 │       └── api/viewerApi.ts      # getMidoceanProducts, uploadLogo, requestExportPng
@@ -55,7 +53,7 @@ UI components live in `src/components/ui/` (Button, Card, Input, Badge, Label). 
 - **Styling**: Use Tailwind utility classes. Use `cn()` for conditional merging. Do not use inline styles or CSS modules.
 - **Canvas**: Use `react-konva` and `konva` for all canvas / drag / transform needs.
   - `ZoneEditor` (admin): uses each `PrintZone.imageUrl` as the canvas background for the matching view tab. ARM zones are shown on the front tab; ARM RIGHT x-coordinate is mirrored (`imageWidth - x - width`) so it renders on the correct sleeve side. Clicking a zone selects/highlights it; the zone only becomes draggable/resizable after the user explicitly presses "Rediger zone" — only that specific zone enters edit mode. Zone names are rendered as Konva `Text` labels. All zone changes (create/update/delete) are local-only and batched to the backend only when the user presses "Gem ændringer" on `ProductEditorPage`.
-  - `ProductCanvas` (viewer): renders **logos and free text** per zone. A single shared `Transformer` attaches to whichever element (`focusedElement: { zoneId, type: 'logo'|'text' }`) is clicked last. Logos use 4 corner anchors + `keepRatio=true`; text uses all 8 anchors + free scale (updates `fontSize` in product-px). Zone boundary enforced in `dragBoundFunc` and `boundBoxFunc` for both element types. `TextState { x, y, fontSize, color }` stored per zone; font controls (size slider + colour picker) rendered below the canvas when a text element is focused. Export sends all visible logo placements (`ZonePlacement[]`) and text placements (`TextPlacement[]`) to `POST /api/export/png` in one request.
+  - `ProductCanvas` (viewer): renders **logos and free text** per zone. Exported via `forwardRef` with `ProductCanvasHandle { exportPng }` — the parent (App) triggers export from the left sidebar button via a ref. A single shared `Transformer` attaches to whichever element (`focusedElement: { zoneId, type: 'logo'|'text' }`) is clicked last. Logos use 4 corner anchors + `keepRatio=true`; text uses all 8 anchors + free scale (updates `fontSize` in product-px). Zone boundary enforced in `dragBoundFunc` and `boundBoxFunc` for both element types. Zone outlines are **clickable**: inactive → activate, active-unfocused → focus, focused → deactivate. Zone label is only rendered for the focused zone. `TextState { x, y, fontSize, color }` stored per zone; font controls (size slider + colour picker) rendered below the canvas when a text element is focused. Export sends all visible logo placements (`ZonePlacement[]`) and text placements (`TextPlacement[]`) to `POST /api/export/png` in one request.
 - **State**: React hooks only. No class components. No external state library unless explicitly requested.
 - **Routing**: `react-router-dom` v6 in Admin. Viewer has no router.
 - **Strict TS**: `strict: true` is set in every tsconfig. Do not use `any` or non-null assertion (`!`) without a comment explaining why.
