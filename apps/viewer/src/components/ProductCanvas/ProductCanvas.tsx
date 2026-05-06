@@ -73,6 +73,8 @@ interface Props {
   focusedZoneId: string | null;
   viewedZoneId: string | null;
   onFocusZone: (zoneId: string) => void;
+  onActivateZone?: (zoneId: string) => void;
+  onDeactivateZone?: (zoneId: string) => void;
   onProductLoaded: (product: Product) => void;
 }
 
@@ -80,7 +82,7 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
   product, logos, zoneLogoAssignments,
   texts, zoneTextAssignments,
   activeZoneIds, focusedZoneId, viewedZoneId,
-  onFocusZone, onProductLoaded,
+  onFocusZone, onActivateZone, onDeactivateZone, onProductLoaded,
 }: Props, ref) {
 
   function effectiveImageUrl(zone: PrintZone): string {
@@ -121,7 +123,8 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
   const [exporting, setExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState<string | null>(null);
   const [errorMessages, setErrorMessages] = useState<string[]>([]);
-  const [canvasCursor, setCanvasCursor] = useState<"default" | "move" | "nwse-resize">("default");
+  const [canvasCursor, setCanvasCursor] = useState<"default" | "pointer" | "move" | "nwse-resize">("default");
+  const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null);
 
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
@@ -360,7 +363,7 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
         </div>
       )}
 
-      <div className={cn("w-full overflow-auto flex justify-center", canvasCursor === "move" ? "cursor-move" : canvasCursor === "nwse-resize" ? "cursor-nwse-resize" : "cursor-default")}>
+      <div className={cn("w-full overflow-auto flex justify-center", canvasCursor === "move" ? "cursor-move" : canvasCursor === "nwse-resize" ? "cursor-nwse-resize" : canvasCursor === "pointer" ? "cursor-pointer" : "cursor-default")}>
         <div className="inline-block rounded-xl border border-border bg-white shadow-sm overflow-hidden">
           <Stage
             ref={stageRef}
@@ -379,6 +382,7 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
             {allSideZones.map((zone) => {
               const isActive  = activeZoneIds.includes(zone.id);
               const isFocused = focusedZoneId === zone.id;
+              const isHovered = hoveredZoneId === zone.id;
               const dispX = displayXForZone(zone);
               return (
                 <Rect
@@ -387,16 +391,29 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
                   y={zone.y * scale}
                   width={zone.width  * scale}
                   height={zone.height * scale}
-                  stroke={isFocused ? "#d9480f" : isActive ? "#ff9966" : "#bbbbbb"}
-                  strokeWidth={isFocused ? 3 : 1}
+                  stroke={isFocused ? "#d9480f" : isActive ? "#ff9966" : isHovered ? "#d9480f" : "#bbbbbb"}
+                  strokeWidth={isFocused ? 3 : isHovered ? 2 : 1}
                   dash={[6, 3]}
                   fill={
                     isFocused
                       ? "rgba(255,102,51,0.11)"
+                      : isHovered
+                      ? "rgba(255,102,51,0.07)"
                       : isActive
                       ? "rgba(255,102,51,0.03)"
-                      : "transparent"
+                      : "rgba(0,0,0,0.001)"
                   }
+                  onMouseEnter={() => { setHoveredZoneId(zone.id); setCanvasCursor("pointer"); }}
+                  onMouseLeave={() => { setHoveredZoneId(null); setCanvasCursor("default"); }}
+                  onClick={() => {
+                    if (!isActive) {
+                      onActivateZone?.(zone.id);
+                    } else if (isFocused) {
+                      onDeactivateZone?.(zone.id);
+                    } else {
+                      onFocusZone(zone.id);
+                    }
+                  }}
                 />
               );
             })}

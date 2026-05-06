@@ -10,8 +10,24 @@ import { TechniqueSelector } from "./components/TechniqueSelector/TechniqueSelec
 import { Card, CardContent } from "./components/ui/card";
 import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
-import { Download, Loader2, MousePointer, Search } from "lucide-react";
+import { ChevronDown, Download, Loader2, MousePointer, Search } from "lucide-react";
 import { cn } from "./lib/utils";
+
+function CollapsibleSection({ title, children }: { title: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="bg-white border border-border rounded-xl shadow-sm overflow-hidden">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors"
+      >
+        <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">{title}</span>
+        <ChevronDown className={cn("w-3.5 h-3.5 text-muted-foreground transition-transform duration-200", !open && "-rotate-90")} />
+      </button>
+      {open && <div className="px-4 pb-4">{children}</div>}
+    </div>
+  );
+}
 
 interface Props {
   preloadedLogo?: string;
@@ -244,10 +260,10 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
 
         {/* ── Workspace ── */}
         {product && (
-          <div className="grid gap-4 lg:gap-5 lg:grid-cols-[230px_minmax(0,1fr)_280px] min-h-[calc(100vh-130px)]">
+          <div className="grid gap-4 lg:gap-5 lg:grid-cols-[230px_minmax(0,1fr)_280px] items-start">
 
             {/* Left sidebar */}
-            <aside className="flex flex-col gap-3 lg:max-h-[calc(100vh-150px)] lg:overflow-auto">
+            <aside className="flex flex-col gap-3">
               {/* Product info */}
               <div className="bg-white border border-border rounded-xl p-4 shadow-sm">
                 <p className="font-bold text-base leading-tight truncate">{product.title}</p>
@@ -342,43 +358,40 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                   focusedZoneId={focusedZoneId}
                   viewedZoneId={viewedZoneId}
                   onFocusZone={(id) => { setFocusedZoneId(id); }}
+                  onActivateZone={handleZoneToggle}
+                  onDeactivateZone={handleZoneDeactivate}
                   onProductLoaded={() => {}}
                 />
               </div>
             </section>
 
             {/* Right sidebar */}
-            <aside className="flex flex-col gap-3 lg:max-h-[calc(100vh-150px)] lg:overflow-auto">
+            <aside className="flex flex-col gap-3">
               {/* Zone indicator */}
-              {focusedZone ? (
-                <div className="bg-white border border-primary/30 rounded-xl p-4 shadow-sm">
-                  <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase mb-2">Aktiv zone</p>
+              <CollapsibleSection title="Aktiv zone">
+                {focusedZone ? (
                   <div className="flex items-center gap-2">
                     <span className="inline-block h-2 w-2 rounded-full bg-primary shrink-0" />
                     <p className="text-sm font-semibold">{focusedZone.name}</p>
                   </div>
-                </div>
-              ) : (
-                <div className="bg-white border border-border rounded-xl p-5 shadow-sm flex flex-col items-center text-center gap-2">
-                  <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center">
-                    <MousePointer className="w-4 h-4 text-muted-foreground" />
+                ) : (
+                  <div className="flex flex-col items-center text-center gap-2 py-1">
+                    <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                      <MousePointer className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold">Vælg en printzone</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Klik på en zone i listen til venstre</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-semibold">Vælg en printzone</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Klik på en zone i listen til venstre</p>
-                  </div>
-                </div>
-              )}
+                )}
+              </CollapsibleSection>
 
-              {/* Technique */}
-              <div className="bg-white border border-border rounded-xl p-4 shadow-sm">
-                <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase mb-3">Print-teknik</p>
+              <CollapsibleSection title="Print-teknik">
                 <TechniqueSelector zone={focusedZone} disabled={!focusedZone} />
-              </div>
+              </CollapsibleSection>
 
-              {/* Logos */}
-              <div className="bg-white border border-border rounded-xl p-4 shadow-sm">
-                <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase mb-3">Logoer</p>
+              <CollapsibleSection title="Logoer">
                 <LogoUploader
                   logos={logos}
                   onLogoUploaded={handleLogoUploaded}
@@ -386,11 +399,9 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                   assignedLogoId={focusedZoneId ? (zoneLogoAssignments[focusedZoneId] ?? null) : null}
                   onAssign={focusedZoneId ? (logoId) => handleAssignLogo(focusedZoneId, logoId) : undefined}
                 />
-              </div>
+              </CollapsibleSection>
 
-              {/* Texts */}
-              <div className="bg-white border border-border rounded-xl p-4 shadow-sm">
-                <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase mb-3">Tekster</p>
+              <CollapsibleSection title="Tekster">
                 <TextLibrary
                   texts={texts}
                   onTextAdded={handleTextAdded}
@@ -399,7 +410,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                   assignedTextId={focusedZoneId ? (zoneTextAssignments[focusedZoneId] ?? null) : null}
                   onAssign={focusedZoneId ? (textId) => handleAssignText(focusedZoneId, textId) : undefined}
                 />
-              </div>
+              </CollapsibleSection>
             </aside>
           </div>
         )}
