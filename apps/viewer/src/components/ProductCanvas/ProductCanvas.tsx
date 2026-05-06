@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Stage, Layer, Image as KonvaImage, Rect, Text as KonvaText, Transformer } from "react-konva";
 import Konva from "konva";
 import useImage from "use-image";
 import type { Product, PrintZone } from "@logo-visualizer/shared";
 import type { LogoEntry, TextEntry } from "../../types";
 import { requestExportPng } from "../../api/viewerApi";
-import { Button } from "../ui/button";
-import { Download, Loader2 } from "lucide-react";
 import { cn } from "../../lib/utils";
+
+export interface ProductCanvasHandle {
+  exportPng: () => void;
+}
 
 const MAX_WIDTH = 700;
 
@@ -74,12 +76,12 @@ interface Props {
   onProductLoaded: (product: Product) => void;
 }
 
-export function ProductCanvas({
+export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function ProductCanvas({
   product, logos, zoneLogoAssignments,
   texts, zoneTextAssignments,
   activeZoneIds, focusedZoneId, viewedZoneId,
   onFocusZone, onProductLoaded,
-}: Props) {
+}: Props, ref) {
 
   function effectiveImageUrl(zone: PrintZone): string {
     const isArm = /\barm\b/i.test(zone.name);
@@ -340,6 +342,8 @@ export function ProductCanvas({
   const focusedLogoState =
     focusedElement?.type === "logo" ? logoStates[focusedElement.zoneId] : null;
 
+  useImperativeHandle(ref, () => ({ exportPng: handleExportPng }));
+
   return (
     <div className="space-y-3 w-full">
       {errorMessages.length > 0 && (
@@ -397,19 +401,19 @@ export function ProductCanvas({
               );
             })}
 
-            {/* Zone labels — always visible */}
+            {/* Zone label — only for focused zone */}
             {allSideZones.map((zone) => {
+              if (focusedZoneId !== zone.id) return null;
               const dispX = displayXForZone(zone);
-              const isFocused = focusedZoneId === zone.id;
               return (
                 <KonvaText
                   key={`zone-label-${zone.id}`}
-                  x={dispX * scale + 5}
-                  y={zone.y * scale + 5}
+                  x={dispX * scale + 6}
+                  y={zone.y * scale + 6}
                   text={zone.name}
-                  fontSize={12}
-                  fill={isFocused ? "#d9480f" : "#6b7280"}
-                  fontStyle={isFocused ? "bold" : "normal"}
+                  fontSize={11}
+                  fill="#d9480f"
+                  fontStyle="bold"
                   listening={false}
                 />
               );
@@ -588,20 +592,6 @@ export function ProductCanvas({
         </div>
       )}
 
-      {logos.length === 0 && (
-        <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-sm text-muted-foreground flex items-center gap-2">
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-border" />
-          Upload dit logo i højre panel for at aktivere download
-        </div>
-      )}
-
-      <Button size="sm" onClick={handleExportPng} disabled={exporting || logos.length === 0} className="w-full sm:w-auto">
-        {exporting
-          ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          : <Download className="h-4 w-4 mr-2" />
-        }
-        {exporting ? "Eksporterer…" : "Download som PNG"}
-      </Button>
     </div>
   );
-}
+});

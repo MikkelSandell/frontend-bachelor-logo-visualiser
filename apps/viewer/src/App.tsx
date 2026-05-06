@@ -1,15 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Product } from "@logo-visualizer/shared";
 import type { LogoEntry, TextEntry } from "./types";
 import { getMidoceanProducts, getMidoceanProduct } from "./api/viewerApi";
 import { LogoUploader } from "./components/LogoUploader/LogoUploader";
 import { TextLibrary } from "./components/TextLibrary/TextLibrary";
-import { ProductCanvas } from "./components/ProductCanvas/ProductCanvas";
+import { ProductCanvas, type ProductCanvasHandle } from "./components/ProductCanvas/ProductCanvas";
 import { ZoneSelector } from "./components/ZoneSelector/ZoneSelector";
 import { TechniqueSelector } from "./components/TechniqueSelector/TechniqueSelector";
 import { Card, CardContent } from "./components/ui/card";
 import { Input } from "./components/ui/input";
-import { Loader2, Search } from "lucide-react";
+import { Button } from "./components/ui/button";
+import { Download, Loader2, MousePointer, Search } from "lucide-react";
 import { cn } from "./lib/utils";
 
 interface Props {
@@ -39,6 +40,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
   const [viewedZoneId, setViewedZoneId] = useState<string | null>(null);
 
   const focusedZone = product?.printZones.find((z) => z.id === focusedZoneId) ?? null;
+  const canvasRef = useRef<ProductCanvasHandle>(null);
 
   useEffect(() => {
     getMidoceanProducts()
@@ -177,21 +179,32 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
     });
   }
 
+  const sides = product?.printZones.filter((z) => /^(front|back)$/i.test(z.name)) ?? [];
+  const hasSides = sides.length > 1;
+
   return (
     <div className="min-h-screen flex flex-col bg-[#f3f4f6]">
-      <div className="bg-primary text-primary-foreground shadow-sm">
-        <div className="max-w-[1600px] mx-auto px-4 py-3 md:px-6">
+      {/* Header */}
+      <div className="bg-primary text-primary-foreground shadow-sm shrink-0">
+        <div className="max-w-[1600px] mx-auto px-4 py-3 md:px-6 flex items-center justify-between">
           <span className="font-semibold text-sm tracking-wide">Logo Visualizer</span>
+          {product && (
+            <span className="text-sm text-primary-foreground/75 font-medium">{product.title}</span>
+          )}
         </div>
       </div>
 
       <main className="flex-1 max-w-[1600px] mx-auto w-full px-4 py-6 md:px-6">
 
+        {/* ── Product picker ── */}
         {!product && (
-          <div className="space-y-3">
-            <h2 className="text-lg font-semibold">Vælg et produkt</h2>
+          <div className="space-y-4 max-w-5xl mx-auto">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">Vælg et produkt</h2>
+              <p className="text-sm text-muted-foreground mt-1">Placér dit logo direkte på produktet og se resultatet med det samme</p>
+            </div>
             {loadingProducts ? (
-              <div className="flex items-center gap-2 text-muted-foreground text-sm bg-white border border-border rounded-xl px-4 py-6 shadow-sm">
+              <div className="flex items-center justify-center gap-2 text-muted-foreground text-sm bg-white border border-border rounded-xl px-4 py-10 shadow-sm">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Indlæser produkter…
               </div>
@@ -211,7 +224,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                     p.title.toLowerCase().includes(search.toLowerCase())
                   );
                   return filtered.length === 0 ? (
-                    <p className="text-sm text-muted-foreground py-6 text-center">
+                    <p className="text-sm text-muted-foreground py-8 text-center">
                       Ingen produkter matcher "{search}"
                     </p>
                   ) : (
@@ -222,19 +235,18 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                           onClick={() => handleSelectProduct(p)}
                           className="group text-left"
                         >
-                          <Card className="overflow-hidden hover:shadow-md transition-shadow">
-                            <div className="aspect-square bg-muted overflow-hidden">
+                          <Card className="overflow-hidden hover:shadow-md transition-all duration-200 hover:-translate-y-0.5">
+                            <div className="aspect-square bg-[#f8f9fb] overflow-hidden">
                               <img
                                 src={p.imageUrl}
                                 alt={p.title}
-                                className="w-full h-full object-contain group-hover:scale-105 transition-transform"
+                                className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-200 p-2"
                               />
                             </div>
-                            <CardContent className="p-2">
-                              <p className="text-xs font-medium truncate">{p.title}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {p.printZones.length}{" "}
-                                {p.printZones.length === 1 ? "zone" : "zoner"}
+                            <CardContent className="p-3 border-t border-border">
+                              <p className="text-sm font-semibold truncate text-foreground">{p.title}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {p.printZones.length} {p.printZones.length === 1 ? "printzone" : "printzoner"}
                               </p>
                             </CardContent>
                           </Card>
@@ -248,21 +260,20 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
           </div>
         )}
 
+        {/* ── Workspace ── */}
         {product && (
-          <div className="grid gap-4 lg:gap-6 lg:grid-cols-[250px_minmax(0,1fr)_300px] min-h-[calc(100vh-130px)]">
-            <aside className="bg-white border border-border rounded-xl p-4 shadow-sm space-y-4 lg:max-h-[calc(100vh-150px)] lg:overflow-auto">
-              <div className="space-y-1.5">
-                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Produkt</p>
-                <Card className="border-border shadow-none">
-                  <CardContent className="p-3">
-                    <p className="text-sm font-semibold truncate">{product.title}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {product.printZones.length} {product.printZones.length === 1 ? "zone" : "zoner"}
-                    </p>
-                  </CardContent>
-                </Card>
+          <div className="grid gap-4 lg:gap-5 lg:grid-cols-[230px_minmax(0,1fr)_280px] min-h-[calc(100vh-130px)]">
+
+            {/* Left sidebar */}
+            <aside className="flex flex-col gap-3 lg:max-h-[calc(100vh-150px)] lg:overflow-auto">
+              {/* Product info */}
+              <div className="bg-white border border-border rounded-xl p-4 shadow-sm">
+                <p className="font-bold text-base leading-tight truncate">{product.title}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {product.printZones.length} {product.printZones.length === 1 ? "printzone" : "printzoner"}
+                </p>
                 <button
-                  className="text-sm text-primary hover:underline"
+                  className="text-xs text-primary hover:underline mt-2 block"
                   onClick={() => {
                     setProduct(null);
                     setActiveZoneIds([]);
@@ -275,8 +286,9 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                 </button>
               </div>
 
-              <div className="space-y-2">
-                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Printzoner</p>
+              {/* Zone selector */}
+              <div className="bg-white border border-border rounded-xl p-4 shadow-sm flex-1">
+                <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase mb-3">Printzoner</p>
                 {product.printZones.length > 1 ? (
                   <ZoneSelector
                     zones={product.printZones}
@@ -294,51 +306,51 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                     {product.printZones[0]?.name ?? "Standardzone"}
                   </div>
                 )}
-              </div>
 
-              {(() => {
-                const sides = product.printZones.filter((z) =>
-                  /^(front|back)$/i.test(z.name)
-                );
-                return sides.length > 1 ? (
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Visning</p>
-                    <div className="space-y-1.5">
-                      {sides.map((z) => (
-                        <button
-                          key={z.id}
-                          onClick={() => setViewedZoneId(z.id)}
-                          className={cn(
-                            "w-full px-3 py-2 rounded-lg text-sm border transition-colors flex items-center justify-between",
-                            viewedZoneId === z.id
-                              ? "bg-primary/10 border-primary text-foreground font-medium"
-                              : "bg-background text-muted-foreground border-input hover:bg-muted"
-                          )}
-                        >
-                          <span>{z.name}</span>
-                          {activeZoneIds.includes(z.id) ? (
-                            <span
-                              className="inline-block w-2 h-2 rounded-full bg-primary"
-                              title="Logo placeret på denne side"
-                            />
-                          ) : (
-                            <span className="inline-block w-2 h-2 rounded-full bg-border" />
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null;
-              })()}
+                <div className="pt-1">
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    disabled={logos.length === 0}
+                    onClick={() => canvasRef.current?.exportPng()}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download som PNG
+                  </Button>
+                  {logos.length === 0 && (
+                    <p className="text-xs text-muted-foreground mt-1.5 text-center">Upload et logo for at aktivere</p>
+                  )}
+                </div>
+              </div>
             </aside>
 
-            <section className="bg-white border border-border rounded-xl shadow-sm p-4 md:p-6 flex flex-col">
-              <div className="mb-4">
-                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Design workspace</p>
-                <h2 className="text-lg md:text-xl font-semibold">Placering på produkt</h2>
-              </div>
-              <div className="flex-1 rounded-xl border border-border bg-[#f8f9fb] p-3 md:p-4 flex items-center justify-center">
+            {/* Center canvas */}
+            <section className="bg-white border border-border rounded-xl shadow-sm flex flex-col overflow-hidden">
+              {/* Front / Back tab strip */}
+              {hasSides && (
+                <div className="flex border-b border-border shrink-0">
+                  {sides.map((z) => (
+                    <button
+                      key={z.id}
+                      onClick={() => setViewedZoneId(z.id)}
+                      className={cn(
+                        "flex-1 py-2.5 text-sm font-medium transition-colors flex items-center justify-center gap-2",
+                        viewedZoneId === z.id
+                          ? "border-b-2 border-primary text-primary bg-primary/5"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                      )}
+                    >
+                      {z.name}
+                      {activeZoneIds.includes(z.id) && (
+                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="flex-1 bg-[#f8f9fb] p-4 md:p-6 flex items-start justify-center overflow-auto">
                 <ProductCanvas
+                  ref={canvasRef}
                   product={product}
                   logos={logos}
                   zoneLogoAssignments={zoneLogoAssignments}
@@ -353,41 +365,38 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
               </div>
             </section>
 
-            <aside className="bg-white border border-border rounded-xl p-4 shadow-sm space-y-4 lg:max-h-[calc(100vh-150px)] lg:overflow-auto">
-              <div className="space-y-1.5">
-                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Valgt zone</p>
-                <div className={cn(
-                  "rounded-lg border px-3 py-2.5 transition-colors",
-                  focusedZone ? "border-primary/40 bg-primary/5" : "border-border bg-muted/30"
-                )}>
+            {/* Right sidebar */}
+            <aside className="flex flex-col gap-3 lg:max-h-[calc(100vh-150px)] lg:overflow-auto">
+              {/* Zone indicator */}
+              {focusedZone ? (
+                <div className="bg-white border border-primary/30 rounded-xl p-4 shadow-sm">
+                  <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase mb-2">Aktiv zone</p>
                   <div className="flex items-center gap-2">
-                    {focusedZone && (
-                      <span className="inline-block h-2 w-2 rounded-full bg-primary flex-shrink-0" />
-                    )}
-                    <p className={cn(
-                      "text-sm font-medium",
-                      focusedZone ? "text-foreground" : "text-muted-foreground"
-                    )}>
-                      {focusedZone?.name ?? "Vælg en print-zone"}
-                    </p>
+                    <span className="inline-block h-2 w-2 rounded-full bg-primary shrink-0" />
+                    <p className="text-sm font-semibold">{focusedZone.name}</p>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {focusedZone ? "Tilpas teknik og placér logo" : "Vælg en zone i venstre panel eller på billedet"}
-                  </p>
                 </div>
-              </div>
+              ) : (
+                <div className="bg-white border border-border rounded-xl p-5 shadow-sm flex flex-col items-center text-center gap-2">
+                  <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center">
+                    <MousePointer className="w-4 h-4 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">Vælg en printzone</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Klik på en zone i listen til venstre</p>
+                  </div>
+                </div>
+              )}
 
-              <hr className="border-border" />
-
-              <div className="space-y-2">
-                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Teknik</p>
+              {/* Technique */}
+              <div className="bg-white border border-border rounded-xl p-4 shadow-sm">
+                <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase mb-3">Print-teknik</p>
                 <TechniqueSelector zone={focusedZone} disabled={!focusedZone} />
               </div>
 
-              <hr className="border-border" />
-
-              <div className="space-y-2">
-                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Logoer</p>
+              {/* Logos */}
+              <div className="bg-white border border-border rounded-xl p-4 shadow-sm">
+                <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase mb-3">Logoer</p>
                 <LogoUploader
                   logos={logos}
                   onLogoUploaded={handleLogoUploaded}
@@ -397,8 +406,9 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                 />
               </div>
 
-              <div className="space-y-2">
-                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Tekster</p>
+              {/* Texts */}
+              <div className="bg-white border border-border rounded-xl p-4 shadow-sm">
+                <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase mb-3">Tekster</p>
                 <TextLibrary
                   texts={texts}
                   onTextAdded={handleTextAdded}
