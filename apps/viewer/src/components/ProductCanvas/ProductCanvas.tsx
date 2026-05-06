@@ -4,11 +4,13 @@ import Konva from "konva";
 import useImage from "use-image";
 import type { Product, PrintZone } from "@logo-visualizer/shared";
 import type { LogoEntry, TextEntry } from "../../types";
-import { requestExportPng } from "../../api/viewerApi";
+import { requestExportPdf, requestExportPng } from "../../api/viewerApi";
+import type { ExportPageRequest } from "../../api/viewerApi";
 import { cn } from "../../lib/utils";
 
 export interface ProductCanvasHandle {
   exportPng: () => void;
+  exportPdf: () => void;
 }
 
 const MAX_WIDTH = 700;
@@ -26,6 +28,8 @@ interface TextState {
   fontSize: number; // product-image pixels (divided by scale when exporting)
   color: string;    // '#rrggbb'
 }
+
+type Side = "front" | "back";
 
 type FocusedElement = { zoneId: string; type: "logo" | "text" } | null;
 
@@ -90,12 +94,17 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
     return isArm ? product.imageUrl : (zone.imageUrl || product.imageUrl);
   }
 
+  const isFrontExact = (z: PrintZone) => z.name.trim().toLowerCase() === "front";
+  const isBackExact = (z: PrintZone) => z.name.trim().toLowerCase() === "back";
+  const isFrontLoose = (z: PrintZone) => /front/i.test(z.name);
+  const isBackLoose = (z: PrintZone) => /back/i.test(z.name);
+
   function displayXForZone(zone: PrintZone): number {
     const isRightArm = /right/i.test(zone.name);
     return isRightArm ? product.imageWidth - zone.x - zone.width : zone.x;
   }
 
-  const isBackZone = (z: PrintZone) => /back/i.test(z.name);
+  const isBackZone = (z: PrintZone) => isBackLoose(z);
 
   const viewedZone = product.printZones.find((z) => z.id === viewedZoneId);
   const viewedImageUrl = viewedZone ? effectiveImageUrl(viewedZone) : product.imageUrl;
@@ -120,7 +129,7 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
   const [textStates, setTextStates] = useState<Record<string, TextState>>({});
   // Which canvas element (logo or text) is currently selected for the Transformer
   const [focusedElement, setFocusedElement] = useState<FocusedElement>(null);
-  const [exporting, setExporting] = useState(false);
+  const [, setExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState<string | null>(null);
   const [errorMessages, setErrorMessages] = useState<string[]>([]);
   const [canvasCursor, setCanvasCursor] = useState<"default" | "pointer" | "move" | "nwse-resize">("default");
@@ -252,25 +261,72 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
 
   // ─── Export ───────────────────────────────────────────────────────────────
 
-  async function handleExportPng() {
-    setErrorMessages([]);
-    setExportSuccess(null);
+  function initializeDefaultLogoState(zone: PrintZone, image: HTMLImageElement): LogoState {
+    const dispX = displayXForZone(zone);
+    const zoneW = zone.width * scale;
+    const zoneH = zone.height * scale;
+    const logoW = Math.min(image.width, zoneW * 0.5);
+    const logoH = (image.height / image.width) * logoW;
+    return {
+      x: dispX * scale + zoneW / 2 - logoW / 2,
+      y: zone.y * scale + zoneH / 2 - logoH / 2,
+      width: logoW,
+      height: logoH,
+    };
+  }
 
-    const logoPlacements = visibleZones.flatMap((zone) => {
-      const state = logoStates[zone.id];
+  function initializeDefaultTextState(zone: PrintZone): TextState {
+    const dispX = displayXForZone(zone);
+    return {
+      x: dispX * scale + zone.width * scale * 0.08,
+      y: zone.y * scale + zone.height * scale * 0.15,
+      fontSize: 24,
+      color: "#000000",
+    };
+  }
+
+  function findSideAnchor(side: Side): PrintZone | null {
+    if (side === "front") {
+      return product.printZones.find(isFrontExact)
+        ?? product.printZones.find(isFrontLoose)
+        ?? product.printZones.find((z) => !isBackZone(z))
+        ?? null;
+    }
+
+    return product.printZones.find(isBackExact)
+      ?? product.printZones.find(isBackLoose)
+      ?? null;
+  }
+
+  function sideZones(side: Side): PrintZone[] {
+    return product.printZones.filter((z) => (side === "back" ? isBackZone(z) : !isBackZone(z)));
+  }
+
+  function buildExportPayloadForZones(
+    zones: PrintZone[],
+    backgroundImageUrl: string,
+    currentLogoStates: Record<string, LogoState>,
+    currentTextStates: Record<string, TextState>
+  ): ExportPageRequest {
+    const exportZoneSet = new Set(zones.map((z) => z.id));
+    const exportZones = zones.filter((z) => activeZoneIds.includes(z.id));
+
+    const logoPlacements = exportZones.flatMap((zone) => {
+      const state = currentLogoStates[zone.id];
       const logoId = zoneLogoAssignments[zone.id];
       if (!state || !logoId) return [];
       return [{
-        zoneId: zone.id, logoId,
+        zoneId: zone.id,
+        logoId,
         logoX: Math.round(state.x / scale),
         logoY: Math.round(state.y / scale),
-        logoWidth:  Math.round(state.width  / scale),
+        logoWidth: Math.round(state.width / scale),
         logoHeight: Math.round(state.height / scale),
       }];
     });
 
-    const textPlacements = visibleZones.flatMap((zone) => {
-      const state = textStates[zone.id];
+    const textPlacements = exportZones.flatMap((zone) => {
+      const state = currentTextStates[zone.id];
       const textId = zoneTextAssignments[zone.id];
       const entry = textId ? texts.find((t) => t.id === textId) : null;
       if (!state || !entry) return [];
@@ -284,19 +340,76 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
       }];
     });
 
-    if (logoPlacements.length === 0 && textPlacements.length === 0) {
+    return {
+      productId: product.id,
+      backgroundImageUrl,
+      placements: logoPlacements.filter((p) => exportZoneSet.has(p.zoneId)),
+      textPlacements: textPlacements.filter((p) => exportZoneSet.has(p.zoneId)),
+    };
+  }
+
+  function buildCurrentExportPayload(): ExportPageRequest {
+    return buildExportPayloadForZones(visibleZones, viewedImageUrl, logoStates, textStates);
+  }
+
+  async function ensureExportStatesForZones(zones: PrintZone[]) {
+    const neededZones = zones.filter((z) => activeZoneIds.includes(z.id));
+    const nextLogoStates: Record<string, LogoState> = { ...logoStates };
+    const nextTextStates: Record<string, TextState> = { ...textStates };
+
+    for (const zone of neededZones) {
+      const logoId = zoneLogoAssignments[zone.id];
+      if (logoId && !nextLogoStates[zone.id]) {
+        const existingImage = logoImages[zone.id];
+        let imageForPlacement = existingImage;
+
+        if (!imageForPlacement) {
+          const logo = logos.find((l) => l.id === logoId);
+          if (logo) {
+            imageForPlacement = await new Promise<HTMLImageElement | undefined>((resolve) => {
+              const img = new Image();
+              img.onload = () => resolve(img);
+              img.onerror = () => resolve(undefined);
+              img.src = logo.url;
+            });
+          }
+        }
+
+        if (imageForPlacement) {
+          nextLogoStates[zone.id] = initializeDefaultLogoState(zone, imageForPlacement);
+        }
+      }
+
+      const textId = zoneTextAssignments[zone.id];
+      if (textId && !nextTextStates[zone.id]) {
+        nextTextStates[zone.id] = initializeDefaultTextState(zone);
+      }
+    }
+
+    if (Object.keys(nextLogoStates).length !== Object.keys(logoStates).length) {
+      setLogoStates(nextLogoStates);
+    }
+    if (Object.keys(nextTextStates).length !== Object.keys(textStates).length) {
+      setTextStates(nextTextStates);
+    }
+
+    return { nextLogoStates, nextTextStates };
+  }
+
+  async function handleExportPng() {
+    setErrorMessages([]);
+    setExportSuccess(null);
+
+    const payload = buildCurrentExportPayload();
+
+    if (payload.placements.length === 0 && payload.textPlacements.length === 0) {
       setErrorMessages(["Ingen logoer eller tekster er placeret på den nuværende side."]);
       return;
     }
 
     setExporting(true);
     try {
-      const blob = await requestExportPng({
-        productId: product.id,
-        backgroundImageUrl: viewedImageUrl,
-        placements: logoPlacements,
-        textPlacements,
-      });
+      const blob = await requestExportPng(payload);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -332,6 +445,91 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
     }
   }
 
+  async function handleExportPdf() {
+    setErrorMessages([]);
+    setExportSuccess(null);
+
+    setExporting(true);
+    try {
+      const frontAnchor = findSideAnchor("front");
+      const backAnchor = findSideAnchor("back");
+
+      const frontZones = frontAnchor ? sideZones("front") : [];
+      const backZones = backAnchor ? sideZones("back") : [];
+
+      const exportZones = [...frontZones, ...backZones];
+      const { nextLogoStates, nextTextStates } = await ensureExportStatesForZones(exportZones);
+
+      const pages: ExportPageRequest[] = [];
+
+      if (frontAnchor) {
+        const frontBackgroundImageUrl = effectiveImageUrl(frontAnchor);
+        if (frontBackgroundImageUrl) {
+          pages.push(
+            buildExportPayloadForZones(frontZones, frontBackgroundImageUrl, nextLogoStates, nextTextStates)
+          );
+        }
+      }
+
+      if (backAnchor) {
+        const backBackgroundImageUrl = effectiveImageUrl(backAnchor);
+        if (backBackgroundImageUrl) {
+          pages.push(
+            buildExportPayloadForZones(backZones, backBackgroundImageUrl, nextLogoStates, nextTextStates)
+          );
+        }
+      }
+
+      if (pages.length === 0) {
+        setErrorMessages(["Kunne ikke oprette PDF-sider til eksport."]);
+        return;
+      }
+
+      // Only include pages that have at least one placement — backend rejects empty pages
+      const nonEmptyPages = pages.filter(
+        (page) => page.placements.length > 0 || page.textPlacements.length > 0
+      );
+      if (nonEmptyPages.length === 0) {
+        setErrorMessages(["Ingen logoer eller tekster er placeret på de valgte sider."]);
+        return;
+      }
+
+      const blob = await requestExportPdf({ pages: nonEmptyPages });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "logo-visualisering.pdf";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setExportSuccess("Download startet");
+    } catch (error) {
+      console.error("PDF eksport fejl:", error);
+      if (typeof error === "object" && error !== null) {
+        const maybe = error as {
+          response?: { data?: { messages?: string[]; message?: string } };
+          message?: string;
+        };
+        const backendMessages = maybe.response?.data?.messages;
+        if (Array.isArray(backendMessages) && backendMessages.length > 0) {
+          setErrorMessages(backendMessages);
+        } else if (maybe.response?.data?.message) {
+          setErrorMessages([maybe.response.data.message]);
+        } else if (maybe.message) {
+          setErrorMessages([maybe.message]);
+        } else {
+          setErrorMessages(["Kunne ikke eksportere PDF fra backend."]);
+        }
+      } else {
+        setErrorMessages(["Kunne ikke eksportere PDF fra backend."]);
+      }
+    } finally {
+      setExporting(false);
+      setCanvasCursor("default");
+    }
+  }
+
   // ─── Focused text state helpers ───────────────────────────────────────────
 
   const focusedTextZoneId =
@@ -345,7 +543,7 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
   const focusedLogoState =
     focusedElement?.type === "logo" ? logoStates[focusedElement.zoneId] : null;
 
-  useImperativeHandle(ref, () => ({ exportPng: handleExportPng }));
+  useImperativeHandle(ref, () => ({ exportPng: handleExportPng, exportPdf: handleExportPdf }));
 
   return (
     <div className="space-y-3 w-full">

@@ -47,13 +47,20 @@ export interface TextPlacement {
   color: string;
 }
 
-export const requestExportPng = (payload: {
+export interface ExportPageRequest {
   productId: string;
   /** Full URL of the product background image for the exported side. */
   backgroundImageUrl: string;
   placements: ZonePlacement[];
   textPlacements: TextPlacement[];
-}) =>
+}
+
+export const requestExportPng = (payload: ExportPageRequest) =>
   client
     .post("/export/png", payload, { responseType: "blob" })
+    .then((r) => r.data as Blob);
+
+export const requestExportPdf = (payload: { pages: ExportPageRequest[] }) =>
+  client
+    .post("/export/pdf", payload, { responseType: "blob" })
     .then((r) => r.data as Blob);

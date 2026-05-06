@@ -315,6 +315,15 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                     <Download className="h-4 w-4 mr-2" />
                     Download som PNG
                   </Button>
+                  <Button
+                    size="sm"
+                    className="w-full mt-2"
+                    disabled={logos.length === 0}
+                    onClick={() => canvasRef.current?.exportPdf()}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download som PDF
+                  </Button>
                   {logos.length === 0 && (
                     <p className="text-xs text-muted-foreground mt-1.5 text-center">Upload et logo for at aktivere</p>
                   )}
