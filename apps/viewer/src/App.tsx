@@ -3,9 +3,7 @@ import type { Product } from "@logo-visualizer/shared";
 import type { LogoEntry, TextEntry } from "./types";
 import { getMidoceanProducts, getMidoceanProduct } from "./api/viewerApi";
 import { LogoUploader } from "./components/LogoUploader/LogoUploader";
-import { LogoPicker } from "./components/LogoPicker/LogoPicker";
 import { TextLibrary } from "./components/TextLibrary/TextLibrary";
-import { TextPicker } from "./components/TextPicker/TextPicker";
 import { ProductCanvas } from "./components/ProductCanvas/ProductCanvas";
 import { ZoneSelector } from "./components/ZoneSelector/ZoneSelector";
 import { TechniqueSelector } from "./components/TechniqueSelector/TechniqueSelector";
@@ -128,7 +126,14 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
   }
 
   function handleAssignLogo(zoneId: string, logoId: string) {
-    setZoneLogoAssignments((prev) => ({ ...prev, [zoneId]: logoId }));
+    setZoneLogoAssignments((prev) => {
+      if (prev[zoneId] === logoId) {
+        const next = { ...prev };
+        delete next[zoneId];
+        return next;
+      }
+      return { ...prev, [zoneId]: logoId };
+    });
   }
 
   // ─── Text handlers ────────────────────────────────────────────────────────
@@ -162,7 +167,14 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
   }
 
   function handleAssignText(zoneId: string, textId: string) {
-    setZoneTextAssignments((prev) => ({ ...prev, [zoneId]: textId }));
+    setZoneTextAssignments((prev) => {
+      if (prev[zoneId] === textId) {
+        const next = { ...prev };
+        delete next[zoneId];
+        return next;
+      }
+      return { ...prev, [zoneId]: textId };
+    });
   }
 
   return (
@@ -375,47 +387,27 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
               <hr className="border-border" />
 
               <div className="space-y-2">
-                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Handlinger</p>
+                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Logoer</p>
                 <LogoUploader
                   logos={logos}
                   onLogoUploaded={handleLogoUploaded}
                   onLogoRemoved={handleLogoRemoved}
+                  assignedLogoId={focusedZoneId ? (zoneLogoAssignments[focusedZoneId] ?? null) : null}
+                  onAssign={focusedZoneId ? (logoId) => handleAssignLogo(focusedZoneId, logoId) : undefined}
                 />
               </div>
 
               <div className="space-y-2">
-                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Tekstbibliotek</p>
+                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Tekster</p>
                 <TextLibrary
                   texts={texts}
                   onTextAdded={handleTextAdded}
                   onTextRemoved={handleTextRemoved}
                   onTextEdited={handleTextEdited}
+                  assignedTextId={focusedZoneId ? (zoneTextAssignments[focusedZoneId] ?? null) : null}
+                  onAssign={focusedZoneId ? (textId) => handleAssignText(focusedZoneId, textId) : undefined}
                 />
               </div>
-
-              {logos.length > 1 && focusedZoneId && focusedZone && (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Vælg logo</p>
-                  <LogoPicker
-                    logos={logos}
-                    zone={focusedZone}
-                    assignedLogoId={zoneLogoAssignments[focusedZoneId] ?? null}
-                    onAssign={(logoId) => handleAssignLogo(focusedZoneId, logoId)}
-                  />
-                </div>
-              )}
-
-              {texts.length > 1 && focusedZoneId && focusedZone && (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Vælg tekst</p>
-                  <TextPicker
-                    texts={texts}
-                    zone={focusedZone}
-                    assignedTextId={zoneTextAssignments[focusedZoneId] ?? null}
-                    onAssign={(textId) => handleAssignText(focusedZoneId, textId)}
-                  />
-                </div>
-              )}
             </aside>
           </div>
         )}
