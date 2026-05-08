@@ -207,17 +207,7 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
         if (!img) continue;
         const zone = product.printZones.find((z) => z.id === zoneId);
         if (!zone) continue;
-        const dispX = displayXForZone(zone);
-        const zoneW = zone.width  * scale;
-        const zoneH = zone.height * scale;
-        const logoW = Math.min(img.width, zoneW * 0.5);
-        const logoH = (img.height / img.width) * logoW;
-        next[zoneId] = {
-          x: dispX * scale + zoneW / 2 - logoW / 2,
-          y: zone.y  * scale + zoneH / 2 - logoH / 2,
-          width: logoW,
-          height: logoH,
-        };
+        next[zoneId] = fitLogoToZone(zone, img);
         changed = true;
       }
       return changed ? next : prev;
@@ -259,20 +249,30 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
     };
   }
 
-  // ─── Export ───────────────────────────────────────────────────────────────
-
-  function initializeDefaultLogoState(zone: PrintZone, image: HTMLImageElement): LogoState {
-    const dispX = displayXForZone(zone);
+  function fitLogoToZone(zone: PrintZone, image: HTMLImageElement): LogoState {
+    const zoneDispX = displayXForZone(zone);
     const zoneW = zone.width * scale;
     const zoneH = zone.height * scale;
-    const logoW = Math.min(image.width, zoneW * 0.5);
-    const logoH = (image.height / image.width) * logoW;
+
+    // Match backend fit rule: preserve ratio and fit entirely inside the zone.
+    const srcW = Math.max(1, image.width);
+    const srcH = Math.max(1, image.height);
+    const fitScale = Math.min(zoneW / srcW, zoneH / srcH);
+    const logoW = srcW * fitScale;
+    const logoH = srcH * fitScale;
+
     return {
-      x: dispX * scale + zoneW / 2 - logoW / 2,
-      y: zone.y * scale + zoneH / 2 - logoH / 2,
+      x: zoneDispX * scale + (zoneW - logoW) / 2,
+      y: zone.y * scale + (zoneH - logoH) / 2,
       width: logoW,
       height: logoH,
     };
+  }
+
+  // ─── Export ───────────────────────────────────────────────────────────────
+
+  function initializeDefaultLogoState(zone: PrintZone, image: HTMLImageElement): LogoState {
+    return fitLogoToZone(zone, image);
   }
 
   function initializeDefaultTextState(zone: PrintZone): TextState {
