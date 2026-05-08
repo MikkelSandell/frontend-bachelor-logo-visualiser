@@ -50,6 +50,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
 
   const [texts, setTexts] = useState<TextEntry[]>([]);
   const [zoneTextAssignments, setZoneTextAssignments] = useState<Record<string, string>>({});
+  const [zoneTechniqueAssignments, setZoneTechniqueAssignments] = useState<Record<string, string>>({});
 
   const [activeZoneIds, setActiveZoneIds] = useState<string[]>([]);
   const [focusedZoneId, setFocusedZoneId] = useState<string | null>(null);
@@ -90,6 +91,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
     setProduct(p);
     setZoneLogoAssignments({});
     setZoneTextAssignments({});
+    setZoneTechniqueAssignments({});
     const singleZoneId = p.printZones.length === 1 ? p.printZones[0].id : null;
     setActiveZoneIds(singleZoneId ? [singleZoneId] : []);
     setFocusedZoneId(singleZoneId);
@@ -103,10 +105,15 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
     setViewedZoneId(toSideZoneId(id, product!));
   }
 
+  function handleSelectTechnique(zoneId: string, techniqueSlug: string) {
+    setZoneTechniqueAssignments((prev) => ({ ...prev, [zoneId]: techniqueSlug }));
+  }
+
   function handleZoneDeactivate(id: string) {
     setActiveZoneIds((prev) => prev.filter((z) => z !== id));
     setZoneLogoAssignments((prev) => { const n = { ...prev }; delete n[id]; return n; });
     setZoneTextAssignments((prev) => { const n = { ...prev }; delete n[id]; return n; });
+    setZoneTechniqueAssignments((prev) => { const n = { ...prev }; delete n[id]; return n; });
     if (focusedZoneId === id) {
       const remaining = activeZoneIds.filter((z) => z !== id);
       setFocusedZoneId(remaining[0] ?? null);
@@ -278,6 +285,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                     setFocusedZoneId(null);
                     setZoneLogoAssignments({});
                     setZoneTextAssignments({});
+                    setZoneTechniqueAssignments({});
                   }}
                 >
                   ← Vælg andet produkt
@@ -366,6 +374,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                   activeZoneIds={activeZoneIds}
                   focusedZoneId={focusedZoneId}
                   viewedZoneId={viewedZoneId}
+                  zoneTechniqueAssignments={zoneTechniqueAssignments}
                   onFocusZone={(id) => { setFocusedZoneId(id); }}
                   onActivateZone={handleZoneToggle}
                   onDeactivateZone={handleZoneDeactivate}
@@ -397,7 +406,12 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
               </CollapsibleSection>
 
               <CollapsibleSection title="Print-teknik">
-                <TechniqueSelector zone={focusedZone} disabled={!focusedZone} />
+                <TechniqueSelector
+                  zone={focusedZone}
+                  selectedTechnique={focusedZoneId ? zoneTechniqueAssignments[focusedZoneId] : undefined}
+                  onSelect={(slug) => focusedZoneId && handleSelectTechnique(focusedZoneId, slug)}
+                  disabled={!focusedZone}
+                />
               </CollapsibleSection>
 
               <CollapsibleSection title="Logoer">

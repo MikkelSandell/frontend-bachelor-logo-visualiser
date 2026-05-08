@@ -73,6 +73,7 @@ interface Props {
   zoneLogoAssignments: Record<string, string>;
   texts: TextEntry[];
   zoneTextAssignments: Record<string, string>;
+  zoneTechniqueAssignments: Record<string, string>;
   activeZoneIds: string[];
   focusedZoneId: string | null;
   viewedZoneId: string | null;
@@ -84,7 +85,7 @@ interface Props {
 
 export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function ProductCanvas({
   product, logos, zoneLogoAssignments,
-  texts, zoneTextAssignments,
+  texts, zoneTextAssignments, zoneTechniqueAssignments,
   activeZoneIds, focusedZoneId, viewedZoneId,
   onFocusZone, onActivateZone, onDeactivateZone, onProductLoaded,
 }: Props, ref) {
@@ -322,6 +323,10 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
         logoY: Math.round(state.y / scale),
         logoWidth: Math.round(state.width / scale),
         logoHeight: Math.round(state.height / scale),
+        // V7 – include technique slug if user has selected one; omit otherwise for backward compat
+        ...(zoneTechniqueAssignments[zone.id]
+          ? { selectedTechniqueName: zoneTechniqueAssignments[zone.id] }
+          : {}),
       }];
     });
 

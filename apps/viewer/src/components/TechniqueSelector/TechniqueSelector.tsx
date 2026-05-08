@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { PRINT_TECHNIQUES, type PrintTechnique, type PrintZone } from "@logo-visualizer/shared";
 import { cn } from "../../lib/utils";
 
@@ -19,14 +18,14 @@ function isPrintTechnique(value: string): value is PrintTechnique {
 
 interface Props {
   zone: PrintZone | null;
+  selectedTechnique?: string;
+  onSelect?: (techniqueSlug: string) => void;
   disabled?: boolean;
 }
 
-export function TechniqueSelector({ zone, disabled = false }: Props) {
+export function TechniqueSelector({ zone, selectedTechnique, onSelect, disabled = false }: Props) {
   const techniques = zone?.allowedTechniques ?? [];
-  const [selected, setSelected] = useState<string>(
-    techniques[0] ?? ""
-  );
+  const selected = selectedTechnique ?? techniques[0] ?? "";
 
   if (!zone || disabled) {
     return (
@@ -46,7 +45,7 @@ export function TechniqueSelector({ zone, disabled = false }: Props) {
         {techniques.map((t) => (
           <button
             key={t}
-            onClick={() => setSelected(t)}
+            onClick={() => onSelect?.(t)}
             className={cn(
               "px-3 py-1.5 rounded-md text-sm border transition-colors",
               selected === t

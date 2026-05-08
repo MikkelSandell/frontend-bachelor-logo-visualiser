@@ -36,6 +36,8 @@ export interface ZonePlacement {
   logoY: number;
   logoWidth: number;
   logoHeight: number;
+  /** Technique slug (e.g. "engraving"). Omit if user has not selected a technique. */
+  selectedTechniqueName?: string;
 }
 
 export interface TextPlacement {
