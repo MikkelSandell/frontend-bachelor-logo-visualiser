@@ -105,7 +105,22 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
     return isRightArm ? product.imageWidth - zone.x - zone.width : zone.x;
   }
 
-  const isBackZone = (z: PrintZone) => isBackLoose(z);
+  // When zone names don't contain "front"/"back", use imageUrl to determine the side.
+  // The first zone imageUrl that differs from product.imageUrl is the "back" side.
+  const backSideImageUrl: string | null = (() => {
+    const namedBack = product.printZones.find(isBackExact);
+    if (namedBack?.imageUrl) return namedBack.imageUrl;
+    for (const z of product.printZones) {
+      if (z.imageUrl && z.imageUrl !== product.imageUrl) return z.imageUrl;
+    }
+    return null;
+  })();
+
+  const isBackZone = (z: PrintZone): boolean => {
+    if (isBackLoose(z)) return true;
+    if (isFrontLoose(z)) return false;
+    return backSideImageUrl !== null && !!z.imageUrl && z.imageUrl === backSideImageUrl;
+  };
 
   const viewedZone = product.printZones.find((z) => z.id === viewedZoneId);
   const viewedImageUrl = viewedZone ? effectiveImageUrl(viewedZone) : product.imageUrl;

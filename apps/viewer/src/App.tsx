@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Product } from "@logo-visualizer/shared";
+import type { Product, PrintZone } from "@logo-visualizer/shared";
 import type { LogoEntry, TextEntry } from "./types";
 import { getMidoceanProducts, getMidoceanProduct } from "./api/viewerApi";
 import { LogoUploader } from "./components/LogoUploader/LogoUploader";
@@ -184,8 +184,30 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
     });
   }
 
-  const sides = product?.printZones.filter((z) => /^(front|back)$/i.test(z.name)) ?? [];
-  const hasSides = sides.length > 1;
+  // Mirror the isBackZone logic from ProductCanvas so side-detection is consistent.
+  // When zone names lack "front"/"back", fall back to imageUrl comparison.
+  const backSideImageUrl: string | null = product
+    ? (() => {
+        const namedBack = product.printZones.find((z) => /^back$/i.test(z.name));
+        if (namedBack?.imageUrl) return namedBack.imageUrl;
+        for (const z of product.printZones) {
+          if (z.imageUrl && z.imageUrl !== product.imageUrl) return z.imageUrl;
+        }
+        return null;
+      })()
+    : null;
+
+  function isBackZoneForSide(z: PrintZone): boolean {
+    if (/back/i.test(z.name)) return true;
+    if (/front/i.test(z.name)) return false;
+    return backSideImageUrl !== null && !!z.imageUrl && z.imageUrl === backSideImageUrl;
+  }
+
+  const hasSides = product !== null && backSideImageUrl !== null;
+  const viewedZone = product?.printZones.find((z) => z.id === viewedZoneId) ?? null;
+  const viewedIsBack = viewedZone ? isBackZoneForSide(viewedZone) : false;
+  const frontRepZoneId = product?.printZones.find((z) => !isBackZoneForSide(z))?.id ?? null;
+  const backRepZoneId  = product?.printZones.find(isBackZoneForSide)?.id ?? null;
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f3f4f6]">
@@ -344,23 +366,34 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
               {/* Front / Back tab strip */}
               {hasSides && (
                 <div className="flex border-b border-border shrink-0">
-                  {sides.map((z) => (
-                    <button
-                      key={z.id}
-                      onClick={() => setViewedZoneId(z.id)}
-                      className={cn(
-                        "flex-1 py-2.5 text-sm font-medium transition-colors flex items-center justify-center gap-2",
-                        viewedZoneId === z.id
-                          ? "border-b-2 border-primary text-primary bg-primary/5"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
-                      )}
-                    >
-                      {z.name}
-                      {activeZoneIds.includes(z.id) && (
-                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary" />
-                      )}
-                    </button>
-                  ))}
+                  <button
+                    onClick={() => frontRepZoneId && setViewedZoneId(frontRepZoneId)}
+                    className={cn(
+                      "flex-1 py-2.5 text-sm font-medium transition-colors flex items-center justify-center gap-2",
+                      !viewedIsBack
+                        ? "border-b-2 border-primary text-primary bg-primary/5"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                    )}
+                  >
+                    Forside
+                    {product!.printZones.filter((z) => !isBackZoneForSide(z)).some((z) => activeZoneIds.includes(z.id)) && (
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => backRepZoneId && setViewedZoneId(backRepZoneId)}
+                    className={cn(
+                      "flex-1 py-2.5 text-sm font-medium transition-colors flex items-center justify-center gap-2",
+                      viewedIsBack
+                        ? "border-b-2 border-primary text-primary bg-primary/5"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                    )}
+                  >
+                    Bagside
+                    {product!.printZones.filter(isBackZoneForSide).some((z) => activeZoneIds.includes(z.id)) && (
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary" />
+                    )}
+                  </button>
                 </div>
               )}
               <div className="flex-1 bg-[#f8f9fb] p-4 md:p-6 flex items-start justify-center overflow-auto">
