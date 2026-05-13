@@ -352,6 +352,20 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product.id]);
 
+  // ─── Sync element focus when the focused zone changes ────────────────────
+  // Handles both canvas zone-rect clicks AND ZoneSelector clicks (external).
+  const prevFocusedZoneRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (focusedZoneId === prevFocusedZoneRef.current) return;
+    prevFocusedZoneRef.current = focusedZoneId;
+    setFocusedElement(
+      focusedZoneId && zoneLogoAssignments[focusedZoneId]
+        ? { zoneId: focusedZoneId, type: "logo" }
+        : null
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedZoneId]);
+
   function clampToZone(lx: number, ly: number, lw: number, lh: number, zone: PrintZone) {
     const zoneDispX = displayXForZone(zone);
     return {
@@ -688,7 +702,12 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
           >
           <Layer>
             {productImage && (
-              <KonvaImage image={productImage} width={canvasWidth} height={canvasHeight} />
+              <KonvaImage
+                image={productImage}
+                width={canvasWidth}
+                height={canvasHeight}
+                onClick={() => setFocusedElement(null)}
+              />
             )}
 
             {/* Zone outlines */}
@@ -720,11 +739,20 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
                   onMouseLeave={() => { setHoveredZoneId(null); setCanvasCursor("default"); }}
                   onClick={() => {
                     if (!isActive) {
+                      setFocusedElement(null);
                       onActivateZone?.(zone.id);
                     } else if (isFocused) {
+                      setFocusedElement(null);
                       onDeactivateZone?.(zone.id);
                     } else {
+                      // Switching to another active zone — the focusedZoneId effect will
+                      // auto-focus its logo, but also set it immediately for instant feedback.
                       onFocusZone(zone.id);
+                      setFocusedElement(
+                        zoneLogoAssignments[zone.id]
+                          ? { zoneId: zone.id, type: "logo" }
+                          : null
+                      );
                     }
                   }}
                 />
