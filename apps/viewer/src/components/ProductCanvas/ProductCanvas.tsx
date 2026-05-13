@@ -74,6 +74,7 @@ interface Props {
   texts: TextEntry[];
   zoneTextAssignments: Record<string, string>;
   zoneTechniqueAssignments: Record<string, string>;
+  zoneColorAssignments: Record<string, number>;
   activeZoneIds: string[];
   focusedZoneId: string | null;
   viewedZoneId: string | null;
@@ -83,9 +84,75 @@ interface Props {
   onProductLoaded: (product: Product) => void;
 }
 
+/**
+ * Recolour a logo to simulate N-colour printing.
+ * Fetches the image via the Vite proxy (relative URL) so the canvas is never
+ * tainted by cross-origin data, then manipulates pixels directly.
+ */
+async function processImageForColors(
+  srcUrl: string,
+  colorCount: number,
+  maxColors: number,
+): Promise<HTMLImageElement> {
+  // Strip the absolute origin so the request goes through the Vite proxy.
+  const proxyUrl = srcUrl.replace(/^https?:\/\/localhost:\d+/, "");
+
+  const blob = await fetch(proxyUrl).then((r) => r.blob());
+  const blobUrl = URL.createObjectURL(blob);
+
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = reject;
+    el.src = blobUrl;
+  });
+
+  URL.revokeObjectURL(blobUrl);
+
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  if (!w || !h) return img;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(img, 0, 0);
+
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const d = imageData.data;
+
+  if (colorCount === 1) {
+    for (let i = 0; i < d.length; i += 4) {
+      d[i] = 0; d[i + 1] = 0; d[i + 2] = 0;
+    }
+  } else if (colorCount === 2) {
+    for (let i = 0; i < d.length; i += 4) {
+      const g = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
+      d[i] = g; d[i + 1] = g; d[i + 2] = g;
+    }
+  } else {
+    const levels = Math.max(2, Math.round((colorCount / maxColors) * 8));
+    const step = 255 / (levels - 1);
+    for (let i = 0; i < d.length; i += 4) {
+      d[i]     = Math.round(Math.round(d[i]     / step) * step);
+      d[i + 1] = Math.round(Math.round(d[i + 1] / step) * step);
+      d[i + 2] = Math.round(Math.round(d[i + 2] / step) * step);
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+
+  return new Promise<HTMLImageElement>((resolve) => {
+    const out = new Image();
+    out.onload = () => resolve(out);
+    out.src = canvas.toDataURL();
+  });
+}
+
 export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function ProductCanvas({
   product, logos, zoneLogoAssignments,
-  texts, zoneTextAssignments, zoneTechniqueAssignments,
+  texts, zoneTextAssignments, zoneTechniqueAssignments, zoneColorAssignments,
   activeZoneIds, focusedZoneId, viewedZoneId,
   onFocusZone, onActivateZone, onDeactivateZone, onProductLoaded,
 }: Props, ref) {
@@ -142,6 +209,7 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
   const logoImages = useMultipleImages(zoneLogoUrlMap);
 
   const [logoStates, setLogoStates] = useState<Record<string, LogoState>>({});
+  const [processedLogoImages, setProcessedLogoImages] = useState<Record<string, HTMLImageElement | undefined>>({});
   const [textStates, setTextStates] = useState<Record<string, TextState>>({});
   // Which canvas element (logo or text) is currently selected for the Transformer
   const [focusedElement, setFocusedElement] = useState<FocusedElement>(null);
@@ -176,6 +244,33 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
       return next;
     });
   }, [zoneLogoAssignments]);
+
+  // ─── Re-process logo images when colour count changes ────────────────────
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      const result: Record<string, HTMLImageElement | undefined> = {};
+      for (const zoneId of Object.keys(logoImages)) {
+        const img = logoImages[zoneId];
+        if (!img) continue;
+        const colorCount = zoneColorAssignments[zoneId];
+        const zone = product.printZones.find((z) => z.id === zoneId);
+        const maxColors = zone?.maxColors ?? 0;
+        if (!colorCount || maxColors === 0 || colorCount >= maxColors) {
+          result[zoneId] = img;
+        } else {
+          result[zoneId] = await processImageForColors(img.src, colorCount, maxColors);
+        }
+      }
+      if (!cancelled) setProcessedLogoImages(result);
+    }
+
+    run();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logoImages, zoneColorAssignments]);
 
   // ─── Reset text placement when its assignment changes ─────────────────────
 
@@ -659,13 +754,14 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
               const img   = logoImages[zone.id];
               const state = logoStates[zone.id];
               if (!img || !state) return null;
+              const displayImg = processedLogoImages[zone.id] ?? img;
               const isLogoFocused =
                 focusedElement?.zoneId === zone.id && focusedElement?.type === "logo";
               return (
                 <KonvaImage
                   key={`logo-${zone.id}`}
                   ref={(node) => { nodeRefs.current[zone.id] = node; }}
-                  image={img}
+                  image={displayImg}
                   x={state.x}
                   y={state.y}
                   width={state.width}

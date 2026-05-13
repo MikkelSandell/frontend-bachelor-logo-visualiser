@@ -130,6 +130,10 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
     setLogos((prev) => [...prev, logo]);
   }
 
+  function handleLogoUpdated(id: string, newUrl: string) {
+    setLogos((prev) => prev.map((l) => (l.id === id ? { ...l, url: newUrl } : l)));
+  }
+
   function handleLogoRemoved(id: string) {
     const remaining = logos.filter((l) => l.id !== id);
     setLogos(remaining);
@@ -413,6 +417,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                   focusedZoneId={focusedZoneId}
                   viewedZoneId={viewedZoneId}
                   zoneTechniqueAssignments={zoneTechniqueAssignments}
+                  zoneColorAssignments={zoneColorAssignments}
                   onFocusZone={(id) => { setFocusedZoneId(id); }}
                   onActivateZone={handleZoneToggle}
                   onDeactivateZone={handleZoneDeactivate}
@@ -467,6 +472,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                   logos={logos}
                   onLogoUploaded={handleLogoUploaded}
                   onLogoRemoved={handleLogoRemoved}
+                  onLogoUpdated={handleLogoUpdated}
                   assignedLogoId={focusedZoneId ? (zoneLogoAssignments[focusedZoneId] ?? null) : null}
                   onAssign={focusedZoneId ? (logoId) => handleAssignLogo(focusedZoneId, logoId) : undefined}
                 />
