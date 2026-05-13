@@ -7,6 +7,7 @@ import { TextLibrary } from "./components/TextLibrary/TextLibrary";
 import { ProductCanvas, type ProductCanvasHandle } from "./components/ProductCanvas/ProductCanvas";
 import { ZoneSelector } from "./components/ZoneSelector/ZoneSelector";
 import { TechniqueSelector } from "./components/TechniqueSelector/TechniqueSelector";
+import { ColorCountSelector } from "./components/ColorCountSelector/ColorCountSelector";
 import { Card, CardContent } from "./components/ui/card";
 import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
@@ -55,6 +56,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
   const [activeZoneIds, setActiveZoneIds] = useState<string[]>([]);
   const [focusedZoneId, setFocusedZoneId] = useState<string | null>(null);
   const [viewedZoneId, setViewedZoneId] = useState<string | null>(null);
+  const [zoneColorAssignments, setZoneColorAssignments] = useState<Record<string, number>>({});
 
   const focusedZone = product?.printZones.find((z) => z.id === focusedZoneId) ?? null;
   const canvasRef = useRef<ProductCanvasHandle>(null);
@@ -92,6 +94,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
     setZoneLogoAssignments({});
     setZoneTextAssignments({});
     setZoneTechniqueAssignments({});
+    setZoneColorAssignments({});
     const singleZoneId = p.printZones.length === 1 ? p.printZones[0].id : null;
     setActiveZoneIds(singleZoneId ? [singleZoneId] : []);
     setFocusedZoneId(singleZoneId);
@@ -114,6 +117,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
     setZoneLogoAssignments((prev) => { const n = { ...prev }; delete n[id]; return n; });
     setZoneTextAssignments((prev) => { const n = { ...prev }; delete n[id]; return n; });
     setZoneTechniqueAssignments((prev) => { const n = { ...prev }; delete n[id]; return n; });
+    setZoneColorAssignments((prev) => { const n = { ...prev }; delete n[id]; return n; });
     if (focusedZoneId === id) {
       const remaining = activeZoneIds.filter((z) => z !== id);
       setFocusedZoneId(remaining[0] ?? null);
@@ -308,6 +312,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                     setZoneLogoAssignments({});
                     setZoneTextAssignments({});
                     setZoneTechniqueAssignments({});
+                    setZoneColorAssignments({});
                   }}
                 >
                   ← Vælg andet produkt
@@ -446,6 +451,16 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
                   disabled={!focusedZone}
                 />
               </CollapsibleSection>
+
+              {(focusedZone?.maxColors ?? 0) > 0 && (
+                <CollapsibleSection title="Antal farver">
+                  <ColorCountSelector
+                    zone={focusedZone}
+                    selectedCount={focusedZoneId ? zoneColorAssignments[focusedZoneId] : undefined}
+                    onSelect={(count) => focusedZoneId && setZoneColorAssignments((prev) => ({ ...prev, [focusedZoneId]: count }))}
+                  />
+                </CollapsibleSection>
+              )}
 
               <CollapsibleSection title="Logoer">
                 <LogoUploader
