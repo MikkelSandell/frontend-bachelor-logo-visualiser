@@ -1,19 +1,52 @@
 import axios from "axios";
 import type { ApiResponse, LogoUploadResponse, Product } from "@logo-visualizer/shared";
 
-const client = axios.create({ baseURL: "http://localhost:5000/api" });
+const API_ORIGIN = "http://localhost:5000";
+const client = axios.create({ baseURL: `${API_ORIGIN}/api` });
+
+function toAbsoluteBackendUrl(value: string): string {
+  const absolute = /^https?:\/\//i.test(value)
+    ? value
+    : value.startsWith("/")
+      ? `${API_ORIGIN}${value}`
+      : `${API_ORIGIN}/${value}`;
+
+  try {
+    const parsed = new URL(absolute);
+    // Backend export is stable with canonical /api/files/ URLs for local uploads.
+    if (parsed.pathname.startsWith("/uploads/")) {
+      const storagePath = parsed.pathname.replace(/^\/+/, "");
+      return `${API_ORIGIN}/api/files/${encodeURIComponent(storagePath)}`;
+    }
+  } catch {
+    return absolute;
+  }
+
+  return absolute;
+}
+
+function normalizeProductUrls(product: Product): Product {
+  return {
+    ...product,
+    imageUrl: toAbsoluteBackendUrl(product.imageUrl),
+    printZones: product.printZones.map((zone) => ({
+      ...zone,
+      imageUrl: zone.imageUrl ? toAbsoluteBackendUrl(zone.imageUrl) : zone.imageUrl,
+    })),
+  };
+}
 
 // ─── Products (Midocean JSON data — no DB required) ──────────────────────────
 
 export const getMidoceanProducts = () =>
   client
     .get<Product[]>("/midocean-products/as-products")
-    .then((r) => r.data);
+    .then((r) => r.data.map(normalizeProductUrls));
 
 export const getMidoceanProduct = (masterCode: string) =>
   client
     .get<Product>(`/midocean-products/${masterCode}/as-product`)
-    .then((r) => r.data);
+    .then((r) => normalizeProductUrls(r.data));
 
 // ─── Logo upload (B3) ────────────────────────────────────────────────────────
 

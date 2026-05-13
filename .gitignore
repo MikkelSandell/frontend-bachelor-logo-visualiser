@@ -24,3 +24,8 @@ pnpm-debug.log*
 Thumbs.db
 .vscode/
 .vs/
+
+# Playwright outputs
+playwright-report/
+test-results/
+e2e-output.txt

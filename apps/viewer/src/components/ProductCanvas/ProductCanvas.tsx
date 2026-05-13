@@ -440,6 +440,7 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
       const state = currentLogoStates[zone.id];
       const logoId = zoneLogoAssignments[zone.id];
       if (!state || !logoId) return [];
+      const selectedTechniqueName = zoneTechniqueAssignments[zone.id] ?? zone.allowedTechniques[0];
       return [{
         zoneId: zone.id,
         logoId,
@@ -447,10 +448,7 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
         logoY: Math.round(state.y / scale),
         logoWidth: Math.round(state.width / scale),
         logoHeight: Math.round(state.height / scale),
-        // V7 – include technique slug if user has selected one; omit otherwise for backward compat
-        ...(zoneTechniqueAssignments[zone.id]
-          ? { selectedTechniqueName: zoneTechniqueAssignments[zone.id] }
-          : {}),
+        ...(selectedTechniqueName ? { selectedTechniqueName } : {}),
       }];
     });
 
@@ -529,7 +527,11 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
     setErrorMessages([]);
     setExportSuccess(null);
 
-    const payload = buildCurrentExportPayload();
+    // Ensure logo/text states are initialized (image may not have loaded yet) — same
+    // pattern as handleExportPdf. Without this, buildExportPayloadForZones returns
+    // empty placements when the logo was just assigned and hasn't rendered yet.
+    const { nextLogoStates, nextTextStates } = await ensureExportStatesForZones(visibleZones);
+    const payload = buildExportPayloadForZones(visibleZones, viewedImageUrl, nextLogoStates, nextTextStates);
 
     if (payload.placements.length === 0 && payload.textPlacements.length === 0) {
       setErrorMessages(["Ingen logoer eller tekster er placeret på den nuværende side."]);
