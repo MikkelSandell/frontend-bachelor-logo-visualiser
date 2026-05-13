@@ -119,8 +119,7 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
     setZoneTechniqueAssignments((prev) => { const n = { ...prev }; delete n[id]; return n; });
     setZoneColorAssignments((prev) => { const n = { ...prev }; delete n[id]; return n; });
     if (focusedZoneId === id) {
-      const remaining = activeZoneIds.filter((z) => z !== id);
-      setFocusedZoneId(remaining[0] ?? null);
+      setFocusedZoneId(null);
     }
   }
 
