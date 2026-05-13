@@ -32,12 +32,13 @@ frontend/
 │       └── src/
 │           ├── api/           # viewerApi.ts
 │           ├── components/
-│           │   ├── LogoUploader/   # upload logos + assign/deselect per zone (merged picker)
-│           │   ├── TextLibrary/    # add / edit / remove text entries + assign/deselect per zone (merged picker)
-│           │   ├── ProductCanvas/  # Konva canvas — logos + text per zone, shared Transformer
+│           │   ├── LogoUploader/       # upload logos + assign/deselect per zone; client-side background removal
+│           │   ├── TextLibrary/        # add / edit / remove text entries + assign/deselect per zone (merged picker)
+│           │   ├── ProductCanvas/      # Konva canvas — logos + text per zone, shared Transformer, colour-count simulation
 │           │   ├── ZoneSelector/
 │           │   ├── TechniqueSelector/
-│           │   └── ui/             # re-exports from @logo-visualizer/shared
+│           │   ├── ColorCountSelector/ # number picker (1…maxColors) for colour-count print preview
+│           │   └── ui/                 # re-exports from @logo-visualizer/shared
 │           ├── lib/
 │           │   └── utils.ts        # re-exports cn() from @logo-visualizer/shared
 │           ├── types.ts            # viewer-only types: LogoEntry, TextEntry
@@ -63,8 +64,8 @@ frontend/
 | `apps/viewer/src/api/viewerApi.ts` | All Viewer → backend API calls — `getMidoceanProducts()`, `getMidoceanProduct()`, `uploadLogo()`, `requestExportPng()`. Export sends `{ backgroundImageUrl, placements[], textPlacements[] }` — all visible zones in one request. |
 | `apps/viewer/src/types.ts` | Viewer-only types: `LogoEntry { id, url, name }` and `TextEntry { id, text }`. Domain types (`Product`, `PrintZone`, …) still come from `@logo-visualizer/shared`. |
 | `apps/admin/src/pages/ProductEditorPage.tsx` | Full product editor. Inline Konva canvas: click-drag on background draws a new zone (auto-enters edit mode); clicking an existing zone selects/highlights it; "Rediger zone" button enters per-zone edit mode (only that zone draggable/resizable via Transformer). Inline zone form shows only while editing — fields: name, position px (X/Y), size px (Bredde/Højde), mm constraints, max colours, techniques. Product metadata (title, image) is collapsed behind "Rediger metadata" toggle. "Gem ændringer" saves everything via `updateProduct()`. "Slet produkt" deletes with confirmation and navigates back. |
-| `apps/viewer/src/components/ProductCanvas/` | Konva canvas — renders logos AND free text per zone. Exported as `forwardRef` with `ProductCanvasHandle { exportPng }` so the parent can trigger PNG export from outside (button lives in the left sidebar). `focusedElement { zoneId, type: 'logo'\|'text' }` drives one shared Transformer. Zone outlines are **clickable**: clicking an inactive zone activates it, clicking an active-but-unfocused zone focuses it, clicking the focused zone deactivates it. Zone label is only rendered for the currently focused zone. Side grouping (front/back) by `zone.name`; arm/right-arm detection by name. |
-| `apps/viewer/src/components/ZoneSelector/` | Multi-select zone picker. First click activates a zone; second click (while focused) removes it; clicking an active-but-unfocused zone focuses it without removing it. Same activate/focus/deactivate logic is also wired to the clickable zone outlines on the canvas. |
+| `apps/viewer/src/components/ProductCanvas/` | Konva canvas — renders logos AND free text per zone. Exported as `forwardRef` with `ProductCanvasHandle { exportPng }` so the parent can trigger PNG export from outside (button lives in the left sidebar). `focusedElement { zoneId, type: 'logo'\|'text' }` drives one shared Transformer. Zone outlines are **clickable**: clicking an inactive zone activates it, clicking an active-but-unfocused zone switches focus to that zone (and auto-focuses its logo if one is assigned), clicking the focused zone deactivates it, clicking the product background clears element focus. Element focus is also cleared when clicking outside the print zone. A `useEffect` on `focusedZoneId` syncs element focus for external zone changes (ZoneSelector). Colour-count simulation: when `zone.maxColors > 0` and a count is selected, `processImageForColors` fetches the logo via the Vite proxy (avoids canvas CORS taint), manipulates pixel data on an offscreen canvas (black / grayscale / posterise), and stores the result in `processedLogoImages` state. Side grouping (front/back) by `zone.name`; arm/right-arm detection by name. |
+| `apps/viewer/src/components/ZoneSelector/` | Multi-select zone picker. First click activates a zone; second click (while focused) removes it; clicking an active-but-unfocused zone focuses it without removing it. Deactivating a zone never auto-jumps focus to the next zone — focus is cleared instead. Same activate/focus/deactivate logic is also wired to the clickable zone outlines on the canvas. |
 | `apps/viewer/src/web-component.ts` | Shadow DOM web component entry point (req V11 / NF1) |
 
 ---
@@ -162,10 +163,10 @@ Both apps proxy `/api/*` to `http://localhost:5000`.
 | A6 | `ProductsPage` – export JSON |
 | A7 | `ProductsPage` – product list with search filter |
 | A8 | `productApi.ts` – `updateProduct()` sends the full product + zone list in one PUT from `ProductEditorPage.handleSaveAll()`; backend diffs the zone list (creates/updates/deletes); auth token via `ensureToken()` |
-| V1 | `LogoUploader` component — upload + per-zone assign/deselect in one UI (thumbnails are clickable; clicking the active one deselects it); `LogoEntry { id, url, name }` in `types.ts` |
-| V2–V6 | `ProductCanvas` component — zone outlines clickable to activate/focus/deactivate; side grouping by name; logos + text constrained to zone; shared Transformer handles both element types |
+| V1 | `LogoUploader` component — upload + per-zone assign/deselect in one UI (thumbnails are clickable; clicking the active one deselects it); `LogoEntry { id, url, name }` in `types.ts`. Each thumbnail has an always-visible "Fjern baggrund" button that flood-fills the background from all edges and replaces it with transparency (client-side canvas, no backend call). |
+| V2–V6 | `ProductCanvas` component — zone outlines clickable to activate/focus/deactivate; clicking outside a zone or on the product background clears element focus; side grouping by name; logos + text constrained to zone; shared Transformer handles both element types |
 | V3 | `ZoneSelector` component + clickable zone outlines on canvas |
-| V7 | `TechniqueSelector` component |
+| V7 | `TechniqueSelector` component + `ColorCountSelector` component — shown when the active zone has `maxColors > 0`; previews the logo with 1 colour (black), 2 colours (grayscale), or posterised intermediate steps up to `maxColors` (full colour). |
 | V8 | "Download som PNG" button in left sidebar calls `canvasRef.current.exportPng()` via `ProductCanvasHandle` ref; `ProductCanvas` collects all visible placements and POSTs to `/api/export/png` |
 | —  | `TextLibrary` — free-text entry + per-zone assign/deselect (merged from former `TextPicker`); `TextEntry { id, text }` in `types.ts`; text placed on canvas as Konva `Text`, draggable within zone, font size/colour configurable |
 | V10 | `main.tsx` – URL param `?logo=…&product=…` |
