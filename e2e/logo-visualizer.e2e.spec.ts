@@ -333,6 +333,130 @@ test.describe("LogoVisualizer frontend E2E", () => {
     expect(zone?.height).toBe(280);
   });
 
+  test("E2E-08 Viewer pre-loads product from URL param", async ({ page, request }) => {
+    const { product, zone } = await setupProductWithZone(state, request);
+
+    await page.goto(`${VIEWER_BASE_URL}?product=${product.id}`);
+
+    // "← Vælg andet produkt" only renders in workspace mode — wait for it to confirm the
+    // product was selected automatically without the user having to click anything.
+    await expect(page.getByText("← Vælg andet produkt")).toBeVisible({ timeout: 15_000 });
+
+    // Product picker search input must not be visible once workspace is active.
+    await expect(page.getByPlaceholder("Søg på produktnavn…")).not.toBeVisible();
+
+    // Product title is shown in the header and the left panel.
+    await expect(page.getByText(product.title).first()).toBeVisible();
+
+    // Zone name is shown in the single-zone static display.
+    await expect(page.getByText(zone.name).first()).toBeVisible();
+
+    // No logo has been uploaded yet — download buttons must be disabled.
+    await expect(page.getByRole("button", { name: "Download som PNG" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Download som PDF" })).toBeDisabled();
+  });
+
+  test("E2E-09 Viewer technique selection appears in export payload", async ({ page, request }) => {
+    // Zone with two techniques so we can verify that clicking the second one
+    // overrides the default (first) technique in the export request body.
+    const product = await createTestProduct(
+      request,
+      state.token,
+      uniqueTitle("E2E Technique"),
+      productPngFixturePath()
+    );
+    state.createdProductIds.push(product.id);
+    await createTestZone(request, state.token, product.id, "Front", ["digital_print", "screen_print"]);
+
+    await openProductInViewer(page, product.title);
+    await uploadPngLogo(page);
+
+    // Both technique buttons must be visible (zone is auto-focused for a single-zone product).
+    await expect(page.getByRole("button", { name: "Digitaltryk" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: "Silketryk" })).toBeVisible();
+
+    // Select the second technique — overrides the default "digital_print".
+    await page.getByRole("button", { name: "Silketryk" }).click();
+
+    const exportRequestPromise = page.waitForRequest(
+      (req) => req.url().includes("/api/export/png") && req.method() === "POST"
+    );
+
+    await page.getByRole("button", { name: "Download som PNG" }).click();
+
+    const exportBody = (await exportRequestPromise).postDataJSON() as ExportPngBody;
+    expect(exportBody.placements.length).toBeGreaterThan(0);
+    expect(exportBody.placements[0].selectedTechniqueName).toBe("screen_print");
+  });
+
+  test("E2E-10 Viewer zone selector activates multiple zones", async ({ page, request }) => {
+    const product = await createTestProduct(
+      request,
+      state.token,
+      uniqueTitle("E2E Multi Zone"),
+      productPngFixturePath()
+    );
+    state.createdProductIds.push(product.id);
+    await createTestZone(request, state.token, product.id, "Front");
+    await createTestZone(request, state.token, product.id, "Back");
+
+    await openProductInViewer(page, product.title);
+
+    // This help text only renders inside ZoneSelector — it confirms the multi-zone
+    // component is shown instead of the single-zone static display.
+    await expect(
+      page.getByText("Klik for at vælge zone · klik den markerede for at fjerne")
+    ).toBeVisible({ timeout: 10_000 });
+
+    const frontButton = page.getByRole("button", { name: "Front" }).first();
+    const backButton = page.getByRole("button", { name: "Back" }).first();
+    await expect(frontButton).toBeVisible();
+    await expect(backButton).toBeVisible();
+
+    // Activate Front — it becomes active and focused.
+    await frontButton.click();
+    // Activate Back — Back becomes focused; Front stays active.
+    await backButton.click();
+
+    // A zone is now focused, so the TechniqueSelector no longer shows its placeholder.
+    await expect(page.getByText("Vælg en print-zone")).not.toBeVisible();
+  });
+
+  test("E2E-11 Admin product list shows created product with correct status", async ({ page, request }) => {
+    const product = await createTestProduct(
+      request,
+      state.token,
+      uniqueTitle("E2E Admin List"),
+      productPngFixturePath()
+    );
+    state.createdProductIds.push(product.id);
+    await createTestZone(request, state.token, product.id, "Front");
+
+    // Products list lives at the admin root route.
+    await page.goto(ADMIN_BASE_URL);
+
+    // Wait for the table row containing our product to appear.
+    const row = page.locator("tr", { hasText: product.title });
+    await expect(row).toBeVisible({ timeout: 10_000 });
+
+    // A product with an image + at least one zone must be FullyConfigured.
+    await expect(row.getByText("FullyConfigured")).toBeVisible();
+
+    // Zone count cell must show 1.
+    await expect(row.getByText("1")).toBeVisible();
+
+    const searchInput = page.getByPlaceholder("Søg på produktnavn…");
+
+    // Searching by exact title keeps the product visible.
+    await searchInput.fill(product.title);
+    await expect(row).toBeVisible();
+
+    // Searching for something that matches nothing shows the empty-state message.
+    const noMatch = "xyzzy_no_match_99999";
+    await searchInput.fill(noMatch);
+    await expect(page.getByText(`Ingen produkter matcher "${noMatch}"`)).toBeVisible();
+  });
+
   test("E2E-07 Viewer rejects unsupported logo", async ({ page, request }) => {
     const { product } = await setupProductWithZone(state, request);
 

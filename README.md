@@ -141,6 +141,98 @@ Products are adapted from raw Midocean supplier data. Each has a CDN image URL, 
 
 ---
 
+## E2E tests (Playwright)
+
+End-to-end tests live in `e2e/` and use [Playwright](https://playwright.dev/). They drive a real Chromium browser against the running frontend and backend — no mocking.
+
+### Prerequisites
+
+Both services must be running before you start the tests:
+
+```bash
+# Terminal 1 — backend (from backend-bachelor-logo-visualiser/)
+docker compose up -d
+cd LogoVisualizer.Api && dotnet run
+
+# Terminal 2 — both frontend dev servers (from frontend-bachelor-logo-visualiser/)
+npm run dev:admin   # http://localhost:5173
+npm run dev:viewer  # http://localhost:5174
+```
+
+On first use, install the Playwright browser binaries:
+
+```bash
+npx playwright install chromium
+```
+
+### Running the tests
+
+```bash
+# Headless (default — fast, no browser window)
+npm run e2e
+
+# Headed (opens a browser window so you can watch each test)
+npm run e2e:headed
+
+# Interactive UI mode (step through tests, inspect selectors, see traces)
+npm run e2e:ui
+```
+
+### Filtering
+
+```bash
+# Run a single test by name fragment
+npm run e2e -- --grep "E2E-03"
+
+# Run all tests whose name contains "Admin"
+npm run e2e -- --grep "Admin"
+```
+
+### Reports
+
+After a run, Playwright writes an HTML report to `playwright-report/`. Open it with:
+
+```bash
+npx playwright show-report
+```
+
+Screenshots and videos are saved automatically on failure.
+
+### What is covered
+
+| Test | What it verifies |
+|------|-----------------|
+| E2E-01 | Viewer loads a product created via API — title and zone name visible |
+| E2E-02 | Viewer accepts a PNG logo upload — Download PNG/PDF buttons become enabled |
+| E2E-03 | Viewer PNG export — correct request shape sent to backend, response is `image/png`, file download triggered |
+| E2E-04 | Viewer PDF export — correct request shape, response is `application/pdf`, file download triggered |
+| E2E-05 | Admin creates a product through the UI — redirects to editor after save |
+| E2E-06 | Admin edits zone metadata through the UI — changes persisted to DB and verified via API |
+| E2E-07 | Viewer rejects an unsupported logo format (WEBP) — error shown or download button stays disabled |
+| E2E-08 | Viewer pre-loads product from `?product=ID` URL param — workspace opens directly, no picker interaction needed |
+| E2E-09 | Technique selection flows through to export — clicking a technique changes `selectedTechniqueName` in the PNG export request body |
+| E2E-10 | Multi-zone product shows `ZoneSelector` — activating two zones removes the "Vælg en print-zone" placeholder from the technique panel |
+| E2E-11 | Admin product list shows a created product — `FullyConfigured` status badge correct, search filter hides non-matching rows |
+
+### Custom URLs
+
+Override the default localhost ports with environment variables:
+
+```bash
+E2E_API_BASE_URL=http://localhost:5001 \
+E2E_ADMIN_BASE_URL=http://localhost:5173 \
+E2E_VIEWER_BASE_URL=http://localhost:5174 \
+npm run e2e
+```
+
+### Notes
+
+- Each test creates its own products via the API and deletes them in `afterEach`. Tests do not rely on seed data.
+- If a run is interrupted, leftover test products (titles beginning with `E2E`) can be deleted manually via Swagger (`DELETE /api/products/{id}` at `http://localhost:5000/swagger`).
+- Tests run sequentially (`fullyParallel: false`) because they share the same live backend.
+
+---
+
 ## Embedding the Viewer
 
 ### Option A – iframe

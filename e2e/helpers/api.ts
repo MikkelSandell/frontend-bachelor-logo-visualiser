@@ -37,11 +37,6 @@ export function logoPngFixturePath(): string {
   return path.resolve(process.cwd(), "e2e/fixtures/logo-128.png");
 }
 
-// Backward-compatible alias used by older tests.
-export function pngFixturePath(): string {
-  return productPngFixturePath();
-}
-
 export async function getDevToken(request: APIRequestContext): Promise<string> {
   const response = await request.post(`${API_BASE_URL}/api/auth/dev-token`);
   if (!response.ok()) {
@@ -92,18 +87,16 @@ export async function createTestProduct(
     id: string | number;
     title: string;
     imageUrl: string;
-    ImageWidth?: number;
-    ImageHeight?: number;
-    imageWidth?: number;
-    imageHeight?: number;
+    imageWidth: number;
+    imageHeight: number;
   };
 
   return {
     id: String(json.id),
     title: json.title,
     imageUrl: json.imageUrl,
-    imageWidth: Number(json.ImageWidth ?? json.imageWidth),
-    imageHeight: Number(json.ImageHeight ?? json.imageHeight),
+    imageWidth: Number(json.imageWidth),
+    imageHeight: Number(json.imageHeight),
   };
 }
 
@@ -111,7 +104,8 @@ export async function createTestZone(
   request: APIRequestContext,
   token: string,
   productId: string,
-  zoneName = "Front"
+  zoneName = "Front",
+  allowedTechniques = ["digital_print"]
 ): Promise<TestZone> {
   const payload = {
     id: 0,
@@ -123,7 +117,7 @@ export async function createTestZone(
     maxPhysicalWidthMm: 120,
     maxPhysicalHeightMm: 100,
     maxColors: 4,
-    allowedTechniques: ["digital_print"],
+    allowedTechniques,
   };
 
   const response = await request.post(`${API_BASE_URL}/api/products/${productId}/zones`, {
@@ -146,8 +140,7 @@ export async function createTestZone(
     y: number;
     width: number;
     height: number;
-    AllowedTechniques?: string[];
-    allowedTechniques?: string[];
+    allowedTechniques: string[];
   };
 
   return {
@@ -157,7 +150,7 @@ export async function createTestZone(
     y: Number(json.y),
     width: Number(json.width),
     height: Number(json.height),
-    allowedTechniques: (Array.isArray(json.AllowedTechniques) ? json.AllowedTechniques : Array.isArray(json.allowedTechniques) ? json.allowedTechniques : []) as string[],
+    allowedTechniques: json.allowedTechniques ?? [],
   };
 }
 
