@@ -223,6 +223,7 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
   const transformerRef = useRef<Konva.Transformer>(null);
   const nodeRefs = useRef<Record<string, Konva.Image | null>>({});
   const textNodeRefs = useRef<Record<string, Konva.Text | null>>({});
+  const processedImageCache = useRef<Map<string, HTMLImageElement>>(new Map());
 
   const scale = Math.min(1, MAX_WIDTH / product.imageWidth);
   const canvasWidth  = product.imageWidth  * scale;
@@ -251,23 +252,40 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
     let cancelled = false;
 
     async function run() {
-      const result: Record<string, HTMLImageElement | undefined> = {};
-      for (const zoneId of Object.keys(logoImages)) {
-        const img = logoImages[zoneId];
-        if (!img) continue;
-        const colorCount = zoneColorAssignments[zoneId];
-        const zone = product.printZones.find((z) => z.id === zoneId);
-        const maxColors = zone?.maxColors ?? 0;
-        if (!colorCount || maxColors === 0 || colorCount >= maxColors) {
-          result[zoneId] = img;
-        } else {
-          result[zoneId] = await processImageForColors(img.src, colorCount, maxColors);
-        }
+      const entries = Object.entries(logoImages).filter(
+        (entry): entry is [string, HTMLImageElement] => !!entry[1]
+      );
+
+      if (entries.length === 0) {
+        if (!cancelled) setProcessedLogoImages({});
+        return;
       }
-      if (!cancelled) setProcessedLogoImages(result);
+
+      const processed = await Promise.all(
+        entries.map(async ([zoneId, img]) => {
+          const colorCount = zoneColorAssignments[zoneId];
+          const zone = product.printZones.find((z) => z.id === zoneId);
+          const maxColors = zone?.maxColors ?? 0;
+
+          if (!colorCount || maxColors === 0 || colorCount >= maxColors) {
+            return [zoneId, img] as const;
+          }
+
+          const cacheKey = `${img.src}:${colorCount}:${maxColors}`;
+          const cached = processedImageCache.current.get(cacheKey);
+          if (cached) return [zoneId, cached] as const;
+
+          const result = await processImageForColors(img.src, colorCount, maxColors);
+          processedImageCache.current.set(cacheKey, result);
+          return [zoneId, result] as const;
+        })
+      );
+
+      if (!cancelled) setProcessedLogoImages(Object.fromEntries(processed));
     }
 
-    run();
+    // Failures are non-fatal: the canvas already falls back to the original via ?? img.
+    run().catch(() => {});
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [logoImages, zoneColorAssignments]);
@@ -473,10 +491,6 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
       placements: logoPlacements.filter((p) => exportZoneSet.has(p.zoneId)),
       textPlacements: textPlacements.filter((p) => exportZoneSet.has(p.zoneId)),
     };
-  }
-
-  function buildCurrentExportPayload(): ExportPageRequest {
-    return buildExportPayloadForZones(visibleZones, viewedImageUrl, logoStates, textStates);
   }
 
   async function ensureExportStatesForZones(zones: PrintZone[]) {

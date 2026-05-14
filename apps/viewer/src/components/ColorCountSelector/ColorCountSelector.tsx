@@ -22,7 +22,7 @@ export function ColorCountSelector({ zone, selectedCount, onSelect }: Props) {
   }
 
   const counts = Array.from({ length: max }, (_, i) => i + 1);
-  const selected = selectedCount ?? 1;
+  const selected = selectedCount;
 
   return (
     <div className="space-y-1.5">
