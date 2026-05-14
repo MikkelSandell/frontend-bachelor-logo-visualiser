@@ -13,6 +13,10 @@
 # | Admin can create a product | Admin product creation (A1) | E2E-05 | Confirms a new product can be created through the admin UI. |
 # | Admin can edit and save print-zone metadata | Admin print-zone editing and persistence (A2, A4, A8) | E2E-06 | Confirms zone values are updated and persisted after save. |
 # | Viewer rejects an unsupported logo file format | Viewer upload validation (V1, NF) | E2E-07 | Confirms unsupported uploads are blocked or produce a visible error state. |
+# | Viewer pre-loads a product from a URL parameter | Viewer URL parameter pre-load (V10) | E2E-08 | Confirms that opening the viewer with ?product=ID skips the product picker and opens the workspace directly. |
+# | Viewer passes the selected print technique to the export request | Viewer print technique selection (V7) | E2E-09 | Confirms that the selected technique slug appears in the PNG export request body. |
+# | Viewer displays a zone selector for a product with multiple print zones | Viewer multi-zone selection (V3) | E2E-10 | Confirms that ZoneSelector renders for multi-zone products and that activating zones updates the technique panel. |
+# | Admin product list displays products with their setup status and supports search | Admin product list and search filter (A7) | E2E-11 | Confirms that a created product appears in the list with the correct status badge and that the name search filter works. |
 
 Feature: Logo Visualizer acceptance scenarios
 
@@ -61,3 +65,33 @@ Feature: Logo Visualizer acceptance scenarios
     When the user tries to upload an unsupported logo file format
     Then the upload should be rejected
     And the design should not become exportable based on that invalid file
+
+  Scenario: Viewer pre-loads a product when its ID is passed as a URL parameter
+    Given a product with a print zone exists
+    When the user opens the viewer with the product ID supplied as a URL parameter
+    Then the product workspace should open directly without the user selecting a product
+    And the product picker should not be visible
+    And the export buttons should be disabled until a logo is uploaded
+
+  Scenario: Viewer passes the selected print technique to the export request
+    Given a product with a print zone that allows multiple techniques is open in the viewer
+    And a valid logo has been uploaded and assigned to the zone
+    When the user selects a specific print technique from the technique panel
+    And the user downloads the design as PNG
+    Then the export request should contain the slug of the selected technique
+
+  Scenario: Viewer displays a zone selector for a product with multiple print zones
+    Given a product with two print zones exists
+    When the user opens the viewer and selects that product
+    Then the zone selector should be visible with all print zones listed
+    And activating both zones should make the technique panel reflect the currently focused zone
+
+  Scenario: Admin product list displays products with their setup status and supports name search
+    Given a fully configured product with at least one print zone exists
+    When the admin navigates to the product list
+    Then the product should appear in the list with a fully configured status badge
+    And the zone count should match the number of print zones on the product
+    When the admin searches for the product by name
+    Then only matching products should be visible in the list
+    When the admin searches for a term that matches no products
+    Then an empty-state message should be displayed
