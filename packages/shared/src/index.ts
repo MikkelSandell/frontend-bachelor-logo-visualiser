@@ -31,6 +31,14 @@ export interface PrintZone {
   maxColors: number;
   /** Product image URL specific to this print position (e.g. back, chest, arm) */
   imageUrl: string;
+  /** Pre-set logo locked by admin — viewer cannot remove it, only adjust own logo on top */
+  fixedLogoUrl?: string;
+  /** File ID used by the export backend to resolve the fixed logo on disk */
+  fixedLogoFileId?: string;
+  fixedLogoX?: number;
+  fixedLogoY?: number;
+  fixedLogoWidth?: number;
+  fixedLogoHeight?: number;
 }
 
 // ─── Product ─────────────────────────────────────────────────────────────────

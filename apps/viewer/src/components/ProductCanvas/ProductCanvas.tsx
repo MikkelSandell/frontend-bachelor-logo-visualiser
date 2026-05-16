@@ -199,6 +199,13 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
 
   const [productImage] = useImage(viewedImageUrl);
 
+  // Build URL map for fixed logos — all zones on the current side that have one
+  const fixedLogoUrlMap: Record<string, string> = {};
+  for (const zone of allSideZones) {
+    if (zone.fixedLogoUrl) fixedLogoUrlMap[zone.id] = zone.fixedLogoUrl;
+  }
+  const fixedLogoImages = useMultipleImages(fixedLogoUrlMap);
+
   // Build URL map: zoneId → logo URL for active zones that have an assignment
   const zoneLogoUrlMap: Record<string, string> = {};
   for (const zoneId of activeZoneIds) {
@@ -488,6 +495,19 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
     const exportZoneSet = new Set(zones.map((z) => z.id));
     const exportZones = zones.filter((z) => activeZoneIds.includes(z.id));
 
+    // Fixed logos are composited first (bottom layer) so the customer logo renders on top.
+    const fixedLogoPlacements = exportZones.flatMap((zone) => {
+      if (!zone.fixedLogoFileId || zone.fixedLogoX == null) return [];
+      return [{
+        zoneId: zone.id,
+        logoId: zone.fixedLogoFileId,
+        logoX: zone.fixedLogoX,
+        logoY: zone.fixedLogoY ?? 0,
+        logoWidth: zone.fixedLogoWidth ?? 0,
+        logoHeight: zone.fixedLogoHeight ?? 0,
+      }];
+    });
+
     const logoPlacements = exportZones.flatMap((zone) => {
       const state = currentLogoStates[zone.id];
       const logoId = zoneLogoAssignments[zone.id];
@@ -522,7 +542,10 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
     return {
       productId: product.id,
       backgroundImageUrl,
-      placements: logoPlacements.filter((p) => exportZoneSet.has(p.zoneId)),
+      placements: [
+        ...fixedLogoPlacements.filter((p) => exportZoneSet.has(p.zoneId)),
+        ...logoPlacements.filter((p) => exportZoneSet.has(p.zoneId)),
+      ],
       textPlacements: textPlacements.filter((p) => exportZoneSet.has(p.zoneId)),
     };
   }
@@ -825,6 +848,31 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
                   listening={false}
                 />
               );
+            })}
+
+            {/* Fixed logos — locked, non-interactive, always below customer logos */}
+            {allSideZones.map((zone) => {
+              const img = fixedLogoImages[zone.id];
+              if (!img || zone.fixedLogoX == null) return null;
+              const dispX = displayXForZone(zone);
+              // Mirror X for right-arm zones the same way zone outlines do
+              const isRightArm = /right/i.test(zone.name);
+              const logoDispX = isRightArm
+                ? product.imageWidth - (zone.fixedLogoX) - (zone.fixedLogoWidth ?? 0)
+                : zone.fixedLogoX;
+              return (
+                <KonvaImage
+                  key={`fixed-logo-${zone.id}`}
+                  image={img}
+                  x={logoDispX * scale}
+                  y={(zone.fixedLogoY ?? 0) * scale}
+                  width={(zone.fixedLogoWidth ?? 0) * scale}
+                  height={(zone.fixedLogoHeight ?? 0) * scale}
+                  listening={false}
+                  opacity={activeZoneIds.includes(zone.id) ? 1 : 0.55}
+                />
+              );
+              void dispX; // used only for side-grouping context above
             })}
 
             {/* Per-zone logos */}

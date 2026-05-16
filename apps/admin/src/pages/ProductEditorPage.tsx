@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { AlertCircle, ArrowLeft, Check, Download, Loader2, Pencil, Upload } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, Download, Lock, Loader2, Pencil, Upload, Wand2, X } from "lucide-react";
 import { PRINT_TECHNIQUES, type PrintZone, type Product } from "@logo-visualizer/shared";
 import { Layer, Image as KonvaImage, Rect, Stage, Text, Transformer } from "react-konva";
 import Konva from "konva";
@@ -13,6 +13,7 @@ import {
   importProducts,
   parseApiError,
   updateProduct,
+  uploadFixedLogo,
 } from "../api/productApi";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -33,6 +34,12 @@ type ZoneDraft = {
   maxPhysicalHeightMm: number;
   maxColors: number;
   allowedTechniques: string[];
+  fixedLogoUrl?: string;
+  fixedLogoFileId?: string;
+  fixedLogoX?: number;
+  fixedLogoY?: number;
+  fixedLogoWidth?: number;
+  fixedLogoHeight?: number;
 };
 
 const TECHNIQUE_SET = new Set<string>(PRINT_TECHNIQUES);
@@ -77,6 +84,12 @@ function toDraft(zone: PrintZone): ZoneDraft {
     maxPhysicalHeightMm: zone.maxPhysicalHeightMm,
     maxColors: zone.maxColors,
     allowedTechniques: [...zone.allowedTechniques],
+    fixedLogoUrl: zone.fixedLogoUrl,
+    fixedLogoFileId: zone.fixedLogoFileId,
+    fixedLogoX: zone.fixedLogoX,
+    fixedLogoY: zone.fixedLogoY,
+    fixedLogoWidth: zone.fixedLogoWidth,
+    fixedLogoHeight: zone.fixedLogoHeight,
   };
 }
 
@@ -93,7 +106,78 @@ function toZone(draft: ZoneDraft, productImageUrl: string): PrintZone {
     maxColors: draft.maxColors,
     allowedTechniques: draft.allowedTechniques,
     imageUrl: productImageUrl,
+    fixedLogoUrl: draft.fixedLogoUrl,
+    fixedLogoFileId: draft.fixedLogoFileId,
+    fixedLogoX: draft.fixedLogoX,
+    fixedLogoY: draft.fixedLogoY,
+    fixedLogoWidth: draft.fixedLogoWidth,
+    fixedLogoHeight: draft.fixedLogoHeight,
   };
+}
+
+/**
+ * Flood-fill background removal — seeds from all edge pixels and makes
+ * connected pixels that match the top-left corner colour transparent.
+ * Fetches via the Vite proxy so the canvas is never cross-origin tainted.
+ */
+async function removeBackground(srcUrl: string): Promise<string> {
+  const fetchUrl = srcUrl.replace(/^https?:\/\/localhost:\d+/, "");
+  const blob = await fetch(fetchUrl).then((r) => r.blob());
+  const objectUrl = URL.createObjectURL(blob);
+
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = reject;
+    el.src = objectUrl;
+  });
+  URL.revokeObjectURL(objectUrl);
+
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  if (!w || !h) return srcUrl;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(img, 0, 0);
+
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const d = imageData.data;
+
+  const bgR = d[0], bgG = d[1], bgB = d[2];
+  const TOL_SQ = 50 * 50;
+
+  const visited = new Uint8Array(w * h);
+  const queue: number[] = [];
+
+  function tryEnqueue(idx: number) {
+    if (idx < 0 || idx >= w * h || visited[idx]) return;
+    const i = idx * 4;
+    if (d[i + 3] < 10) { visited[idx] = 1; return; }
+    const dr = d[i] - bgR, dg = d[i + 1] - bgG, db = d[i + 2] - bgB;
+    if (dr * dr + dg * dg + db * db <= TOL_SQ) { visited[idx] = 1; queue.push(idx); }
+  }
+
+  for (let x = 0; x < w; x++) { tryEnqueue(x); tryEnqueue((h - 1) * w + x); }
+  for (let y = 1; y < h - 1; y++) { tryEnqueue(y * w); tryEnqueue(y * w + w - 1); }
+
+  while (queue.length > 0) {
+    const idx = queue.pop()!;
+    d[idx * 4 + 3] = 0;
+    const x = idx % w, y = (idx / w) | 0;
+    if (x > 0)     tryEnqueue(idx - 1);
+    if (x < w - 1) tryEnqueue(idx + 1);
+    if (y > 0)     tryEnqueue(idx - w);
+    if (y < h - 1) tryEnqueue(idx + w);
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+
+  return new Promise<string>((resolve) => {
+    canvas.toBlob((b) => { resolve(b ? URL.createObjectURL(b) : srcUrl); }, "image/png");
+  });
 }
 
 export function ProductEditorPage() {
@@ -124,7 +208,13 @@ export function ProductEditorPage() {
   const [drawPreview, setDrawPreview] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
   const [productImage] = useImage(product?.imageUrl ?? "");
+  const [fixedLogoImage] = useImage(editingZoneId ? (zoneDraft.fixedLogoUrl ?? "") : "");
+  const [uploadingFixedLogo, setUploadingFixedLogo] = useState(false);
+  const [removingFixedLogoBg, setRemovingFixedLogoBg] = useState(false);
+
   const transformerRef = useRef<Konva.Transformer | null>(null);
+  const fixedLogoTransformerRef = useRef<Konva.Transformer | null>(null);
+  const fixedLogoNodeRef = useRef<Konva.Image | null>(null);
   const zoneRectRefs = useRef<Record<string, Konva.Rect | null>>({});
 
   const canvasScale = useMemo(() => {
@@ -201,10 +291,92 @@ export function ProductEditorPage() {
     transformer.getLayer()?.batchDraw();
   }, [editingZoneId, zones]);
 
+  useEffect(() => {
+    const tr = fixedLogoTransformerRef.current;
+    if (!tr) return;
+    if (editingZoneId && fixedLogoImage && fixedLogoNodeRef.current) {
+      tr.nodes([fixedLogoNodeRef.current]);
+    } else {
+      tr.nodes([]);
+    }
+    tr.getLayer()?.batchDraw();
+  }, [editingZoneId, fixedLogoImage]);
+
   function resetZoneDraft() {
     setEditingZoneId(null);
     setSelectedZoneId(null);
     setZoneDraft(EMPTY_DRAFT);
+  }
+
+  function fitLogoToZone(imgWidth: number, imgHeight: number, zone: ZoneDraft) {
+    const fitScale = Math.min(zone.width / imgWidth, zone.height / imgHeight);
+    const w = Math.round(imgWidth * fitScale);
+    const h = Math.round(imgHeight * fitScale);
+    return {
+      fixedLogoX: Math.round(zone.x + (zone.width - w) / 2),
+      fixedLogoY: Math.round(zone.y + (zone.height - h) / 2),
+      fixedLogoWidth: w,
+      fixedLogoHeight: h,
+    };
+  }
+
+  async function handleFixedLogoUpload(file: File) {
+    if (uploadingFixedLogo) return;
+    setUploadingFixedLogo(true);
+    setErrors([]);
+    try {
+      const result = await uploadFixedLogo(file);
+      const img = new Image();
+      img.onload = () => {
+        const fit = fitLogoToZone(img.naturalWidth, img.naturalHeight, zoneDraft);
+        setZoneDraft((prev) => ({
+          ...prev,
+          fixedLogoUrl: result.logoUrl,
+          fixedLogoFileId: result.logoId,
+          ...fit,
+        }));
+      };
+      img.src = result.logoUrl;
+    } catch (error) {
+      setErrors(["Kunne ikke uploade fast logo. Prøv igen."]);
+    } finally {
+      setUploadingFixedLogo(false);
+    }
+  }
+
+  function handleRemoveFixedLogo() {
+    setZoneDraft((prev) => ({
+      ...prev,
+      fixedLogoUrl: undefined,
+      fixedLogoFileId: undefined,
+      fixedLogoX: undefined,
+      fixedLogoY: undefined,
+      fixedLogoWidth: undefined,
+      fixedLogoHeight: undefined,
+    }));
+  }
+
+  async function handleRemoveFixedLogoBg() {
+    if (!zoneDraft.fixedLogoUrl || removingFixedLogoBg) return;
+    setRemovingFixedLogoBg(true);
+    setErrors([]);
+    try {
+      const processedBlobUrl = await removeBackground(zoneDraft.fixedLogoUrl);
+      // Re-upload so the stored URL is persistent (blob URLs vanish on refresh)
+      const blob = await fetch(processedBlobUrl).then((r) => r.blob());
+      URL.revokeObjectURL(processedBlobUrl);
+      const file = new File([blob], "fixed-logo-no-bg.png", { type: "image/png" });
+      const result = await uploadFixedLogo(file);
+      setZoneDraft((prev) => ({
+        ...prev,
+        fixedLogoUrl: result.logoUrl,
+        fixedLogoFileId: result.logoId,
+      }));
+    } catch {
+      setErrors(["Kunne ikke fjerne baggrund. Prøv igen."]);
+    } finally {
+      setRemovingFixedLogoBg(false);
+    }
   }
 
   function handleZoneSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -601,7 +773,7 @@ export function ProductEditorPage() {
                     key={`${zone.id}-label`}
                     x={zone.x * canvasScale + 4}
                     y={zone.y * canvasScale + 4}
-                    text={zone.name || "(uden navn)"}
+                    text={(zone.name || "(uden navn)") + (zone.fixedLogoUrl ? " 🔒" : "")}
                     fontSize={12}
                     fill={zone.id === selectedZoneId ? "#0057ff" : "#ff6633"}
                     listening={false}
@@ -621,6 +793,69 @@ export function ProductEditorPage() {
                     listening={false}
                   />
                 )}
+
+                {/* Fixed logo — draggable/resizable when editing that zone */}
+                {editingZoneId && fixedLogoImage && zoneDraft.fixedLogoX != null && (
+                  <KonvaImage
+                    ref={fixedLogoNodeRef}
+                    image={fixedLogoImage}
+                    x={(zoneDraft.fixedLogoX ?? 0) * canvasScale}
+                    y={(zoneDraft.fixedLogoY ?? 0) * canvasScale}
+                    width={(zoneDraft.fixedLogoWidth ?? 0) * canvasScale}
+                    height={(zoneDraft.fixedLogoHeight ?? 0) * canvasScale}
+                    draggable
+                    dragBoundFunc={(pos) => {
+                      const zone = zoneDraft;
+                      const w = (zoneDraft.fixedLogoWidth ?? 0) * canvasScale;
+                      const h = (zoneDraft.fixedLogoHeight ?? 0) * canvasScale;
+                      return {
+                        x: Math.max(zone.x * canvasScale, Math.min(pos.x, (zone.x + zone.width) * canvasScale - w)),
+                        y: Math.max(zone.y * canvasScale, Math.min(pos.y, (zone.y + zone.height) * canvasScale - h)),
+                      };
+                    }}
+                    onDragEnd={(e) => {
+                      setZoneDraft((prev) => ({
+                        ...prev,
+                        fixedLogoX: Math.round(e.target.x() / canvasScale),
+                        fixedLogoY: Math.round(e.target.y() / canvasScale),
+                      }));
+                    }}
+                    onTransformEnd={(e) => {
+                      const node = e.target as Konva.Image;
+                      const newW = Math.max(10, Math.round((node.width() * node.scaleX()) / canvasScale));
+                      const newH = Math.max(10, Math.round((node.height() * node.scaleY()) / canvasScale));
+                      node.scaleX(1); node.scaleY(1);
+                      setZoneDraft((prev) => ({
+                        ...prev,
+                        fixedLogoX: Math.round(node.x() / canvasScale),
+                        fixedLogoY: Math.round(node.y() / canvasScale),
+                        fixedLogoWidth: newW,
+                        fixedLogoHeight: newH,
+                      }));
+                    }}
+                  />
+                )}
+
+                <Transformer
+                  ref={fixedLogoTransformerRef}
+                  keepRatio
+                  rotateEnabled={false}
+                  enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]}
+                  borderStroke="#f59e0b"
+                  borderStrokeWidth={1.5}
+                  anchorFill="#ffffff"
+                  anchorStroke="#f59e0b"
+                  anchorStrokeWidth={1.5}
+                  anchorSize={8}
+                  boundBoxFunc={(oldBox, newBox) => {
+                    if (newBox.width < 10 || newBox.height < 10) return oldBox;
+                    const z = zoneDraft;
+                    if (newBox.x < z.x * canvasScale || newBox.y < z.y * canvasScale) return oldBox;
+                    if (newBox.x + newBox.width > (z.x + z.width) * canvasScale) return oldBox;
+                    if (newBox.y + newBox.height > (z.y + z.height) * canvasScale) return oldBox;
+                    return newBox;
+                  }}
+                />
 
                 <Transformer
                   ref={transformerRef}
@@ -862,6 +1097,75 @@ export function ProductEditorPage() {
                   </div>
                 </div>
 
+                {/* Fixed logo */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5">
+                    <Lock className="h-3.5 w-3.5" />
+                    Fast logo
+                  </Label>
+                  {zoneDraft.fixedLogoUrl ? (
+                    <div className="flex items-center gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                      <div className="h-10 w-10 shrink-0 rounded border border-amber-200 bg-[repeating-conic-gradient(#e5e7eb_0%_25%,#fff_0%_50%)] bg-[length:8px_8px] flex items-center justify-center overflow-hidden">
+                        {removingFixedLogoBg
+                          ? <Loader2 className="h-4 w-4 animate-spin text-amber-600" />
+                          : <img src={zoneDraft.fixedLogoUrl} alt="Fast logo" className="max-h-full max-w-full object-contain" />
+                        }
+                      </div>
+                      <div className="flex flex-col gap-1 flex-1 min-w-0">
+                        <span className="text-xs text-amber-800">
+                          Logo sat — træk og resize på canvas for at justere position.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void handleRemoveFixedLogoBg()}
+                          disabled={removingFixedLogoBg}
+                          className="flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-40 disabled:cursor-default w-fit"
+                        >
+                          {removingFixedLogoBg
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <Wand2 className="h-3 w-3" />
+                          }
+                          {removingFixedLogoBg ? "Fjerner baggrund…" : "Fjern baggrund"}
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRemoveFixedLogo}
+                        disabled={removingFixedLogoBg}
+                        className="text-amber-700 hover:text-red-600 disabled:opacity-40"
+                        aria-label="Fjern fast logo"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      <input
+                        id="fixed-logo-upload"
+                        type="file"
+                        accept="image/png,image/jpeg,image/svg+xml"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) void handleFixedLogoUpload(file);
+                          e.currentTarget.value = "";
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={uploadingFixedLogo}
+                        onClick={() => document.getElementById("fixed-logo-upload")?.click()}
+                        className="gap-2"
+                      >
+                        {uploadingFixedLogo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                        Upload fast logo
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex items-center gap-2 pt-1">
                   <Button type="submit">Gem zone</Button>
                   <Button type="button" variant="outline" onClick={resetZoneDraft}>
@@ -919,6 +1223,11 @@ export function ProductEditorPage() {
                   Fysisk: {zone.maxPhysicalWidthMm}×{zone.maxPhysicalHeightMm} mm &nbsp;·&nbsp; Farver: {zone.maxColors || "∞"}
                 </p>
                 <p className="text-xs text-muted-foreground">Teknikker: {zone.allowedTechniques.join(", ") || "Ingen"}</p>
+                {zone.fixedLogoUrl && (
+                  <p className="text-xs text-amber-700 flex items-center gap-1">
+                    <Lock className="h-3 w-3" /> Fast logo sat
+                  </p>
+                )}
               </div>
             ))}
           </CardContent>

@@ -42,6 +42,12 @@ type ZoneUpsertPayload = {
   maxPhysicalHeightMm: number;
   maxColors: number;
   allowedTechniques: string[];
+  fixedLogoUrl?: string;
+  fixedLogoFileId?: string;
+  fixedLogoX?: number;
+  fixedLogoY?: number;
+  fixedLogoWidth?: number;
+  fixedLogoHeight?: number;
 };
 
 export type ProductUpsertPayload = {
@@ -183,6 +189,12 @@ function toZoneUpsertPayload(zone: PrintZone): ZoneUpsertPayload {
     maxPhysicalHeightMm: Math.round(zone.maxPhysicalHeightMm),
     maxColors: Math.round(zone.maxColors),
     allowedTechniques: [...zone.allowedTechniques],
+    fixedLogoUrl: zone.fixedLogoUrl,
+    fixedLogoFileId: zone.fixedLogoFileId,
+    fixedLogoX: zone.fixedLogoX,
+    fixedLogoY: zone.fixedLogoY,
+    fixedLogoWidth: zone.fixedLogoWidth,
+    fixedLogoHeight: zone.fixedLogoHeight,
   };
 }
 
@@ -354,6 +366,20 @@ export async function updateZone(productId: string, zoneId: string, zone: PrintZ
 export async function deleteZone(productId: string, zoneId: string): Promise<void> {
   await ensureToken();
   await client.delete(`/products/${productId}/zones/${zoneId}`);
+}
+
+export interface FixedLogoUploadResult {
+  logoId: string;
+  logoUrl: string;
+}
+
+export async function uploadFixedLogo(file: File): Promise<FixedLogoUploadResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await client.post<FixedLogoUploadResult>("/logos/upload", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response.data;
 }
 
 export async function getTechniques(): Promise<string[]> {
