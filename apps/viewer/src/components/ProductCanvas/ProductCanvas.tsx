@@ -7,6 +7,7 @@ import type { LogoEntry, TextEntry } from "../../types";
 import { requestExportPdf, requestExportPng } from "../../api/viewerApi";
 import type { ExportPageRequest } from "../../api/viewerApi";
 import { cn } from "../../lib/utils";
+import { getTechniqueFilterConfig } from "../../lib/techniqueFilters";
 
 export interface ProductCanvasHandle {
   exportPng: () => void;
@@ -289,6 +290,39 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [logoImages, zoneColorAssignments]);
+
+  // ─── Apply technique filter effects to logo nodes ─────────────────────────
+  // Runs after every image or technique change. Uses rAF so react-konva has
+  // committed the latest `image` prop before we call cache().
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      for (const [zoneId, node] of Object.entries(nodeRefs.current)) {
+        if (!node) continue;
+        const hasImage = !!(processedLogoImages[zoneId] ?? logoImages[zoneId]);
+        if (!hasImage) continue;
+
+        const cfg = getTechniqueFilterConfig(zoneTechniqueAssignments[zoneId]);
+
+        const attrs: Record<string, unknown> = { filters: cfg.filters };
+        if (cfg.blurRadius !== undefined) attrs.blurRadius = cfg.blurRadius;
+        if (cfg.noise     !== undefined) attrs.noise      = cfg.noise;
+        if (cfg.enhance   !== undefined) attrs.enhance    = cfg.enhance;
+        if (cfg.levels    !== undefined) attrs.levels     = cfg.levels;
+
+        node.setAttrs(attrs);
+
+        if (cfg.filters.length > 0) {
+          node.cache();
+        } else {
+          node.clearCache();
+        }
+      }
+      stageRef.current?.batchDraw();
+    });
+    return () => cancelAnimationFrame(raf);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoneTechniqueAssignments, processedLogoImages, logoImages]);
 
   // ─── Reset text placement when its assignment changes ─────────────────────
 
