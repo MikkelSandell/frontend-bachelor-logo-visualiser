@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AlertCircle, ArrowLeft, Check, Download, Lock, Loader2, Pencil, Upload, Wand2, X } from "lucide-react";
+import { getTechniqueFilterConfig } from "../lib/techniqueFilters";
 import { PRINT_TECHNIQUES, type PrintZone, type Product } from "@logo-visualizer/shared";
 import { Layer, Image as KonvaImage, Rect, Stage, Text, Transformer } from "react-konva";
 import Konva from "konva";
@@ -40,6 +41,8 @@ type ZoneDraft = {
   fixedLogoY?: number;
   fixedLogoWidth?: number;
   fixedLogoHeight?: number;
+  fixedLogoTechnique?: string;
+  fixedLogoColorCount?: number;
 };
 
 const TECHNIQUE_SET = new Set<string>(PRINT_TECHNIQUES);
@@ -90,6 +93,8 @@ function toDraft(zone: PrintZone): ZoneDraft {
     fixedLogoY: zone.fixedLogoY,
     fixedLogoWidth: zone.fixedLogoWidth,
     fixedLogoHeight: zone.fixedLogoHeight,
+    fixedLogoTechnique: zone.fixedLogoTechnique,
+    fixedLogoColorCount: zone.fixedLogoColorCount,
   };
 }
 
@@ -112,7 +117,47 @@ function toZone(draft: ZoneDraft, productImageUrl: string): PrintZone {
     fixedLogoY: draft.fixedLogoY,
     fixedLogoWidth: draft.fixedLogoWidth,
     fixedLogoHeight: draft.fixedLogoHeight,
+    fixedLogoTechnique: draft.fixedLogoTechnique,
+    fixedLogoColorCount: draft.fixedLogoColorCount,
   };
+}
+
+async function processImageForColors(srcUrl: string, colorCount: number): Promise<HTMLImageElement> {
+  const fetchUrl = srcUrl.replace(/^https?:\/\/localhost:\d+/, "");
+  const blob = await fetch(fetchUrl).then((r) => r.blob());
+  const blobUrl = URL.createObjectURL(blob);
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image(); el.onload = () => resolve(el); el.onerror = reject; el.src = blobUrl;
+  });
+  URL.revokeObjectURL(blobUrl);
+  const w = img.naturalWidth, h = img.naturalHeight;
+  if (!w || !h) return img;
+  const canvas = document.createElement("canvas");
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(img, 0, 0);
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const d = imageData.data;
+  if (colorCount === 1) {
+    for (let i = 0; i < d.length; i += 4) { d[i] = 0; d[i + 1] = 0; d[i + 2] = 0; }
+  } else if (colorCount === 2) {
+    for (let i = 0; i < d.length; i += 4) {
+      const g = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
+      d[i] = g; d[i + 1] = g; d[i + 2] = g;
+    }
+  } else {
+    const levels = Math.max(2, Math.round((colorCount / 8) * 8));
+    const step = 255 / (levels - 1);
+    for (let i = 0; i < d.length; i += 4) {
+      d[i]     = Math.round(Math.round(d[i]     / step) * step);
+      d[i + 1] = Math.round(Math.round(d[i + 1] / step) * step);
+      d[i + 2] = Math.round(Math.round(d[i + 2] / step) * step);
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return new Promise<HTMLImageElement>((resolve) => {
+    const out = new Image(); out.onload = () => resolve(out); out.src = canvas.toDataURL();
+  });
 }
 
 /**
@@ -211,6 +256,7 @@ export function ProductEditorPage() {
   const [fixedLogoImage] = useImage(editingZoneId ? (zoneDraft.fixedLogoUrl ?? "") : "");
   const [uploadingFixedLogo, setUploadingFixedLogo] = useState(false);
   const [removingFixedLogoBg, setRemovingFixedLogoBg] = useState(false);
+  const [processedFixedLogoImage, setProcessedFixedLogoImage] = useState<HTMLImageElement | null>(null);
 
   const transformerRef = useRef<Konva.Transformer | null>(null);
   const fixedLogoTransformerRef = useRef<Konva.Transformer | null>(null);
@@ -301,6 +347,40 @@ export function ProductEditorPage() {
     }
     tr.getLayer()?.batchDraw();
   }, [editingZoneId, fixedLogoImage]);
+
+  // ─── Process fixed logo colour count for canvas preview ───────────────────
+  useEffect(() => {
+    let cancelled = false;
+    const count = zoneDraft.fixedLogoColorCount ?? 0;
+    if (!fixedLogoImage || count === 0) {
+      setProcessedFixedLogoImage(null);
+      return;
+    }
+    processImageForColors(fixedLogoImage.src, count)
+      .then((img) => { if (!cancelled) setProcessedFixedLogoImage(img); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fixedLogoImage, zoneDraft.fixedLogoColorCount]);
+
+  // ─── Apply technique filter to fixed logo node for canvas preview ─────────
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      const node = fixedLogoNodeRef.current;
+      if (!node || !fixedLogoImage) return;
+      const cfg = getTechniqueFilterConfig(zoneDraft.fixedLogoTechnique);
+      const attrs: Record<string, unknown> = { filters: cfg.filters };
+      if (cfg.blurRadius !== undefined) attrs.blurRadius = cfg.blurRadius;
+      if (cfg.noise      !== undefined) attrs.noise      = cfg.noise;
+      if (cfg.enhance    !== undefined) attrs.enhance    = cfg.enhance;
+      if (cfg.levels     !== undefined) attrs.levels     = cfg.levels;
+      node.setAttrs(attrs);
+      if (cfg.filters.length > 0) { node.cache(); } else { node.clearCache(); }
+      node.getLayer()?.batchDraw();
+    });
+    return () => cancelAnimationFrame(raf);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoneDraft.fixedLogoTechnique, processedFixedLogoImage, fixedLogoImage]);
 
   function resetZoneDraft() {
     setEditingZoneId(null);
@@ -798,7 +878,7 @@ export function ProductEditorPage() {
                 {editingZoneId && fixedLogoImage && zoneDraft.fixedLogoX != null && (
                   <KonvaImage
                     ref={fixedLogoNodeRef}
-                    image={fixedLogoImage}
+                    image={processedFixedLogoImage ?? fixedLogoImage}
                     x={(zoneDraft.fixedLogoX ?? 0) * canvasScale}
                     y={(zoneDraft.fixedLogoY ?? 0) * canvasScale}
                     width={(zoneDraft.fixedLogoWidth ?? 0) * canvasScale}
@@ -1104,6 +1184,7 @@ export function ProductEditorPage() {
                     Fast logo
                   </Label>
                   {zoneDraft.fixedLogoUrl ? (
+                    <div className="space-y-2">
                     <div className="flex items-center gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
                       <div className="h-10 w-10 shrink-0 rounded border border-amber-200 bg-[repeating-conic-gradient(#e5e7eb_0%_25%,#fff_0%_50%)] bg-[length:8px_8px] flex items-center justify-center overflow-hidden">
                         {removingFixedLogoBg
@@ -1137,6 +1218,41 @@ export function ProductEditorPage() {
                       >
                         <X className="h-4 w-4" />
                       </button>
+                    </div>
+
+                    {/* Technique for fixed logo */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">Print-teknik for fast logo</Label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {["", ...zoneDraft.allowedTechniques].map((t) => (
+                          <button
+                            key={t || "_none"}
+                            type="button"
+                            onClick={() => setZoneDraft((prev) => ({ ...prev, fixedLogoTechnique: t || undefined }))}
+                            className={`px-2.5 py-1 rounded text-xs border transition-colors ${
+                              (zoneDraft.fixedLogoTechnique ?? "") === t
+                                ? "bg-amber-500 text-white border-amber-500 font-medium"
+                                : "bg-background border-input hover:bg-muted"
+                            }`}
+                          >
+                            {t || "Ingen"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Colour count for fixed logo */}
+                    <div className="flex items-center gap-3">
+                      <Label className="text-xs shrink-0">Farver (0 = fuld)</Label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={8}
+                        value={zoneDraft.fixedLogoColorCount ?? 0}
+                        onChange={(e) => setZoneDraft((prev) => ({ ...prev, fixedLogoColorCount: Number(e.target.value) }))}
+                        className="w-16 h-7 text-xs border border-input rounded px-2"
+                      />
+                    </div>
                     </div>
                   ) : (
                     <div>

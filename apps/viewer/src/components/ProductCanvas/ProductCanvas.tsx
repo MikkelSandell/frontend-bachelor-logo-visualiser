@@ -218,6 +218,7 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
 
   const [logoStates, setLogoStates] = useState<Record<string, LogoState>>({});
   const [processedLogoImages, setProcessedLogoImages] = useState<Record<string, HTMLImageElement | undefined>>({});
+  const [processedFixedLogoImages, setProcessedFixedLogoImages] = useState<Record<string, HTMLImageElement | undefined>>({});
   const [textStates, setTextStates] = useState<Record<string, TextState>>({});
   // Which canvas element (logo or text) is currently selected for the Transformer
   const [focusedElement, setFocusedElement] = useState<FocusedElement>(null);
@@ -230,6 +231,7 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const nodeRefs = useRef<Record<string, Konva.Image | null>>({});
+  const fixedLogoNodeRefs = useRef<Record<string, Konva.Image | null>>({});
   const textNodeRefs = useRef<Record<string, Konva.Text | null>>({});
   const processedImageCache = useRef<Map<string, HTMLImageElement>>(new Map());
 
@@ -330,6 +332,61 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
     return () => cancelAnimationFrame(raf);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoneTechniqueAssignments, processedLogoImages, logoImages]);
+
+  // ─── Process fixed logo colour count (admin-set, read-only in viewer) ─────
+
+  useEffect(() => {
+    let cancelled = false;
+    async function run() {
+      const entries = Object.entries(fixedLogoImages).filter(
+        (entry): entry is [string, HTMLImageElement] => !!entry[1]
+      );
+      if (entries.length === 0) { if (!cancelled) setProcessedFixedLogoImages({}); return; }
+
+      const processed = await Promise.all(
+        entries.map(async ([zoneId, img]) => {
+          const zone = product.printZones.find((z) => z.id === zoneId);
+          const count = zone?.fixedLogoColorCount ?? 0;
+          if (!count) return [zoneId, img] as const;
+
+          const cacheKey = `fixed:${img.src}:${count}`;
+          const cached = processedImageCache.current.get(cacheKey);
+          if (cached) return [zoneId, cached] as const;
+
+          const result = await processImageForColors(img.src, count, Math.max(count + 1, 8));
+          processedImageCache.current.set(cacheKey, result);
+          return [zoneId, result] as const;
+        })
+      );
+      if (!cancelled) setProcessedFixedLogoImages(Object.fromEntries(processed));
+    }
+    run().catch(() => {});
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fixedLogoImages]);
+
+  // ─── Apply technique filter to fixed logo nodes (admin-set, read-only) ────
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      for (const [zoneId, node] of Object.entries(fixedLogoNodeRefs.current)) {
+        if (!node) continue;
+        if (!(processedFixedLogoImages[zoneId] ?? fixedLogoImages[zoneId])) continue;
+        const zone = product.printZones.find((z) => z.id === zoneId);
+        const cfg = getTechniqueFilterConfig(zone?.fixedLogoTechnique);
+        const attrs: Record<string, unknown> = { filters: cfg.filters };
+        if (cfg.blurRadius !== undefined) attrs.blurRadius = cfg.blurRadius;
+        if (cfg.noise      !== undefined) attrs.noise      = cfg.noise;
+        if (cfg.enhance    !== undefined) attrs.enhance    = cfg.enhance;
+        if (cfg.levels     !== undefined) attrs.levels     = cfg.levels;
+        node.setAttrs(attrs);
+        if (cfg.filters.length > 0) { node.cache(); } else { node.clearCache(); }
+      }
+      stageRef.current?.batchDraw();
+    });
+    return () => cancelAnimationFrame(raf);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [processedFixedLogoImages, fixedLogoImages]);
 
   // ─── Reset text placement when its assignment changes ─────────────────────
 
@@ -854,8 +911,7 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
             {allSideZones.map((zone) => {
               const img = fixedLogoImages[zone.id];
               if (!img || zone.fixedLogoX == null) return null;
-              const dispX = displayXForZone(zone);
-              // Mirror X for right-arm zones the same way zone outlines do
+              const displayImg = processedFixedLogoImages[zone.id] ?? img;
               const isRightArm = /right/i.test(zone.name);
               const logoDispX = isRightArm
                 ? product.imageWidth - (zone.fixedLogoX) - (zone.fixedLogoWidth ?? 0)
@@ -863,7 +919,8 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
               return (
                 <KonvaImage
                   key={`fixed-logo-${zone.id}`}
-                  image={img}
+                  ref={(node) => { fixedLogoNodeRefs.current[zone.id] = node; }}
+                  image={displayImg}
                   x={logoDispX * scale}
                   y={(zone.fixedLogoY ?? 0) * scale}
                   width={(zone.fixedLogoWidth ?? 0) * scale}
@@ -872,7 +929,6 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
                   opacity={activeZoneIds.includes(zone.id) ? 1 : 0.55}
                 />
               );
-              void dispX; // used only for side-grouping context above
             })}
 
             {/* Per-zone logos */}

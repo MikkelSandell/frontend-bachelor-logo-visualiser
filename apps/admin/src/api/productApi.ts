@@ -48,6 +48,8 @@ type ZoneUpsertPayload = {
   fixedLogoY?: number;
   fixedLogoWidth?: number;
   fixedLogoHeight?: number;
+  fixedLogoTechnique?: string;
+  fixedLogoColorCount?: number;
 };
 
 export type ProductUpsertPayload = {
@@ -195,6 +197,8 @@ function toZoneUpsertPayload(zone: PrintZone): ZoneUpsertPayload {
     fixedLogoY: zone.fixedLogoY,
     fixedLogoWidth: zone.fixedLogoWidth,
     fixedLogoHeight: zone.fixedLogoHeight,
+    fixedLogoTechnique: zone.fixedLogoTechnique,
+    fixedLogoColorCount: zone.fixedLogoColorCount,
   };
 }
 

@@ -39,6 +39,10 @@ export interface PrintZone {
   fixedLogoY?: number;
   fixedLogoWidth?: number;
   fixedLogoHeight?: number;
+  /** Print technique to simulate on the fixed logo (set by admin, read-only in viewer) */
+  fixedLogoTechnique?: string;
+  /** Colour count to simulate (0 = full colour, 1 = black, 2 = greyscale, etc.) */
+  fixedLogoColorCount?: number;
 }
 
 // ─── Product ─────────────────────────────────────────────────────────────────
