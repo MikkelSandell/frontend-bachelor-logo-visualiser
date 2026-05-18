@@ -268,6 +268,12 @@ export function ProductEditorPage() {
     return Math.min(1, MAX_CANVAS_WIDTH / product.imageWidth);
   }, [product]);
 
+  // Mirrors right arm zones to the correct visual side, matching viewer behaviour.
+  function displayXForZone(zone: { name: string; x: number; width: number }): number {
+    const isRightArm = /right/i.test(zone.name);
+    return isRightArm && product ? product.imageWidth - zone.x - zone.width : zone.x;
+  }
+
   const canvasWidth = useMemo(() => {
     if (!product) return 0;
     return product.imageWidth * canvasScale;
@@ -810,7 +816,7 @@ export function ProductEditorPage() {
                       ref={(node) => {
                         zoneRectRefs.current[zone.id] = node;
                       }}
-                      x={zone.x * canvasScale}
+                      x={displayXForZone(zone) * canvasScale}
                       y={zone.y * canvasScale}
                       width={zone.width * canvasScale}
                       height={zone.height * canvasScale}
@@ -825,23 +831,26 @@ export function ProductEditorPage() {
                         setSelectedZoneId(zone.id);
                       }}
                       onDragEnd={(event) => {
-                        const next = clampRectToImage(
-                          event.target.x() / canvasScale,
-                          event.target.y() / canvasScale,
-                          zone.width,
-                          zone.height
-                        );
+                        const isRightArm = /right/i.test(zone.name);
+                        const displayX = event.target.x() / canvasScale;
+                        const rawX = isRightArm && product
+                          ? product.imageWidth - displayX - zone.width
+                          : displayX;
+                        const next = clampRectToImage(rawX, event.target.y() / canvasScale, zone.width, zone.height);
                         updateZoneGeometry(zone.id, next);
                       }}
                       onTransformEnd={(event) => {
                         const node = event.target as Konva.Rect;
-                        const nextWidth = (node.width() * node.scaleX()) / canvasScale;
+                        const nextWidth  = (node.width()  * node.scaleX()) / canvasScale;
                         const nextHeight = (node.height() * node.scaleY()) / canvasScale;
-                        const nextX = node.x() / canvasScale;
-                        const nextY = node.y() / canvasScale;
+                        const isRightArm = /right/i.test(zone.name);
+                        const displayX = node.x() / canvasScale;
+                        const rawX = isRightArm && product
+                          ? product.imageWidth - displayX - nextWidth
+                          : displayX;
                         node.scaleX(1);
                         node.scaleY(1);
-                        const next = clampRectToImage(nextX, nextY, nextWidth, nextHeight);
+                        const next = clampRectToImage(rawX, node.y() / canvasScale, nextWidth, nextHeight);
                         updateZoneGeometry(zone.id, next);
                       }}
                     />
@@ -851,7 +860,7 @@ export function ProductEditorPage() {
                 {zones.map((zone) => (
                   <Text
                     key={`${zone.id}-label`}
-                    x={zone.x * canvasScale + 4}
+                    x={displayXForZone(zone) * canvasScale + 4}
                     y={zone.y * canvasScale + 4}
                     text={(zone.name || "(uden navn)") + (zone.fixedLogoUrl ? " 🔒" : "")}
                     fontSize={12}
@@ -879,24 +888,32 @@ export function ProductEditorPage() {
                   <KonvaImage
                     ref={fixedLogoNodeRef}
                     image={processedFixedLogoImage ?? fixedLogoImage}
-                    x={(zoneDraft.fixedLogoX ?? 0) * canvasScale}
+                    x={displayXForZone({ name: zoneDraft.name, x: zoneDraft.fixedLogoX ?? 0, width: zoneDraft.fixedLogoWidth ?? 0 }) * canvasScale}
                     y={(zoneDraft.fixedLogoY ?? 0) * canvasScale}
                     width={(zoneDraft.fixedLogoWidth ?? 0) * canvasScale}
                     height={(zoneDraft.fixedLogoHeight ?? 0) * canvasScale}
                     draggable
                     dragBoundFunc={(pos) => {
-                      const zone = zoneDraft;
+                      const isRightArm = /right/i.test(zoneDraft.name);
+                      const dispZoneX = isRightArm && product
+                        ? product.imageWidth - zoneDraft.x - zoneDraft.width
+                        : zoneDraft.x;
                       const w = (zoneDraft.fixedLogoWidth ?? 0) * canvasScale;
                       const h = (zoneDraft.fixedLogoHeight ?? 0) * canvasScale;
                       return {
-                        x: Math.max(zone.x * canvasScale, Math.min(pos.x, (zone.x + zone.width) * canvasScale - w)),
-                        y: Math.max(zone.y * canvasScale, Math.min(pos.y, (zone.y + zone.height) * canvasScale - h)),
+                        x: Math.max(dispZoneX * canvasScale, Math.min(pos.x, (dispZoneX + zoneDraft.width) * canvasScale - w)),
+                        y: Math.max(zoneDraft.y * canvasScale, Math.min(pos.y, (zoneDraft.y + zoneDraft.height) * canvasScale - h)),
                       };
                     }}
                     onDragEnd={(e) => {
+                      const isRightArm = /right/i.test(zoneDraft.name);
+                      const displayX = e.target.x() / canvasScale;
+                      const rawX = isRightArm && product
+                        ? product.imageWidth - displayX - (zoneDraft.fixedLogoWidth ?? 0)
+                        : displayX;
                       setZoneDraft((prev) => ({
                         ...prev,
-                        fixedLogoX: Math.round(e.target.x() / canvasScale),
+                        fixedLogoX: Math.round(rawX),
                         fixedLogoY: Math.round(e.target.y() / canvasScale),
                       }));
                     }}
@@ -909,9 +926,14 @@ export function ProductEditorPage() {
                       node.height(newH * canvasScale);
                       // Technique filter uses node.cache() — regenerate at new dimensions immediately.
                       if (node.isCached()) node.cache();
+                      const isRightArm = /right/i.test(zoneDraft.name);
+                      const displayX = node.x() / canvasScale;
+                      const rawX = isRightArm && product
+                        ? product.imageWidth - displayX - newW
+                        : displayX;
                       setZoneDraft((prev) => ({
                         ...prev,
-                        fixedLogoX: Math.round(node.x() / canvasScale),
+                        fixedLogoX: Math.round(rawX),
                         fixedLogoY: Math.round(node.y() / canvasScale),
                         fixedLogoWidth: newW,
                         fixedLogoHeight: newH,
@@ -934,8 +956,12 @@ export function ProductEditorPage() {
                   boundBoxFunc={(oldBox, newBox) => {
                     if (newBox.width < 10 || newBox.height < 10) return oldBox;
                     const z = zoneDraft;
-                    if (newBox.x < z.x * canvasScale || newBox.y < z.y * canvasScale) return oldBox;
-                    if (newBox.x + newBox.width > (z.x + z.width) * canvasScale) return oldBox;
+                    const isRightArm = /right/i.test(z.name);
+                    const dispZoneX = isRightArm && product
+                      ? product.imageWidth - z.x - z.width
+                      : z.x;
+                    if (newBox.x < dispZoneX * canvasScale || newBox.y < z.y * canvasScale) return oldBox;
+                    if (newBox.x + newBox.width > (dispZoneX + z.width) * canvasScale) return oldBox;
                     if (newBox.y + newBox.height > (z.y + z.height) * canvasScale) return oldBox;
                     return newBox;
                   }}
