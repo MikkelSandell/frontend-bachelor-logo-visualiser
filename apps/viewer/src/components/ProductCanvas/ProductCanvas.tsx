@@ -561,12 +561,19 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
     const fixedLogoPlacements = zones.flatMap((zone) => {
       if (!zone.fixedLogoFileId || zone.fixedLogoX == null) return [];
       const fixedColorCount = zone.fixedLogoColorCount ?? 0;
+      const fixedLogoWidth  = zone.fixedLogoWidth ?? 0;
+      const isRightArm = /right/i.test(zone.name);
+      // Admin stores raw coordinates; viewer mirrors right arm for display.
+      // Apply the same mirror here so the export matches the canvas preview.
+      const exportFixedLogoX = isRightArm
+        ? product.imageWidth - (zone.fixedLogoX) - fixedLogoWidth
+        : zone.fixedLogoX;
       return [{
         zoneId: zone.id,
         logoId: zone.fixedLogoFileId,
-        logoX: zone.fixedLogoX,
+        logoX: exportFixedLogoX,
         logoY: zone.fixedLogoY ?? 0,
-        logoWidth: zone.fixedLogoWidth ?? 0,
+        logoWidth: fixedLogoWidth,
         logoHeight: zone.fixedLogoHeight ?? 0,
         ...(zone.fixedLogoTechnique ? { selectedTechniqueName: zone.fixedLogoTechnique } : {}),
         colorCount: fixedColorCount,
@@ -578,19 +585,17 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
       const state = currentLogoStates[zone.id];
       const logoId = zoneLogoAssignments[zone.id];
       if (!state || !logoId) return [];
-      const selectedTechniqueName = zoneTechniqueAssignments[zone.id] ?? zone.allowedTechniques[0];
+      // Only send a technique when the user explicitly chose one — do not fall back to
+      // allowedTechniques[0], which would apply effects the canvas is not showing.
+      const selectedTechniqueName = zoneTechniqueAssignments[zone.id];
       const colorCount = zoneColorAssignments[zone.id] ?? 0;
       const maxColors = zone.maxColors ?? 0;
 
-      // state.x is in display/canvas coordinates. For right arm zones the canvas mirrors
-      // the zone to the opposite side, so we must un-mirror back to actual image coordinates
-      // before sending to the backend which composites on the real product photo.
       const logoWidthPx  = Math.round(state.width  / scale);
       const logoHeightPx = Math.round(state.height / scale);
-      const isRightArm   = /right/i.test(zone.name);
-      const logoX = isRightArm
-        ? product.imageWidth - Math.round(state.x / scale) - logoWidthPx
-        : Math.round(state.x / scale);
+      // state.x is already in display/canvas coordinates which include the right-arm
+      // mirror. Use it directly so the export matches what the user sees in the canvas.
+      const logoX = Math.round(state.x / scale);
 
       return [{
         zoneId: zone.id,
