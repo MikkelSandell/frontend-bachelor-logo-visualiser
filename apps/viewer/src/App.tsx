@@ -129,8 +129,17 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
     setLogos((prev) => [...prev, logo]);
   }
 
-  function handleLogoUpdated(id: string, newUrl: string) {
-    setLogos((prev) => prev.map((l) => (l.id === id ? { ...l, url: newUrl } : l)));
+  function handleLogoUpdated(id: string, newUrl: string, newId?: string) {
+    setLogos((prev) => prev.map((l) => l.id === id ? { ...l, url: newUrl, id: newId ?? l.id } : l));
+    if (newId && newId !== id) {
+      setZoneLogoAssignments((prev) => {
+        const next = { ...prev };
+        for (const zoneId of Object.keys(next)) {
+          if (next[zoneId] === id) next[zoneId] = newId;
+        }
+        return next;
+      });
+    }
   }
 
   function handleLogoRemoved(id: string) {

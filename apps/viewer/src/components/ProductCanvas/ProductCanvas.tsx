@@ -59,7 +59,10 @@ function useMultipleImages(
       img.onload = () => {
         if (!cancelled) setImages((prev) => ({ ...prev, [key]: img }));
       };
-      img.src = url;
+      // Strip absolute localhost origin so the request goes through the Vite proxy.
+      // Without this the canvas is tainted by cross-origin data and node.cache()
+      // (used by technique filters) throws a getImageData security error.
+      img.src = url.replace(/^https?:\/\/localhost:\d+/, "");
     });
 
     return () => { cancelled = true; };
@@ -553,8 +556,11 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
     const exportZones = zones.filter((z) => activeZoneIds.includes(z.id));
 
     // Fixed logos are composited first (bottom layer) so the customer logo renders on top.
-    const fixedLogoPlacements = exportZones.flatMap((zone) => {
+    // Use all side zones (not just active ones) — fixed logos are always visible on the canvas
+    // regardless of whether the user has activated the zone.
+    const fixedLogoPlacements = zones.flatMap((zone) => {
       if (!zone.fixedLogoFileId || zone.fixedLogoX == null) return [];
+      const fixedColorCount = zone.fixedLogoColorCount ?? 0;
       return [{
         zoneId: zone.id,
         logoId: zone.fixedLogoFileId,
@@ -562,6 +568,9 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
         logoY: zone.fixedLogoY ?? 0,
         logoWidth: zone.fixedLogoWidth ?? 0,
         logoHeight: zone.fixedLogoHeight ?? 0,
+        ...(zone.fixedLogoTechnique ? { selectedTechniqueName: zone.fixedLogoTechnique } : {}),
+        colorCount: fixedColorCount,
+        maxColors: Math.max(fixedColorCount + 1, 8),
       }];
     });
 
@@ -570,14 +579,29 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
       const logoId = zoneLogoAssignments[zone.id];
       if (!state || !logoId) return [];
       const selectedTechniqueName = zoneTechniqueAssignments[zone.id] ?? zone.allowedTechniques[0];
+      const colorCount = zoneColorAssignments[zone.id] ?? 0;
+      const maxColors = zone.maxColors ?? 0;
+
+      // state.x is in display/canvas coordinates. For right arm zones the canvas mirrors
+      // the zone to the opposite side, so we must un-mirror back to actual image coordinates
+      // before sending to the backend which composites on the real product photo.
+      const logoWidthPx  = Math.round(state.width  / scale);
+      const logoHeightPx = Math.round(state.height / scale);
+      const isRightArm   = /right/i.test(zone.name);
+      const logoX = isRightArm
+        ? product.imageWidth - Math.round(state.x / scale) - logoWidthPx
+        : Math.round(state.x / scale);
+
       return [{
         zoneId: zone.id,
         logoId,
-        logoX: Math.round(state.x / scale),
+        logoX,
         logoY: Math.round(state.y / scale),
-        logoWidth: Math.round(state.width / scale),
-        logoHeight: Math.round(state.height / scale),
+        logoWidth: logoWidthPx,
+        logoHeight: logoHeightPx,
         ...(selectedTechniqueName ? { selectedTechniqueName } : {}),
+        colorCount,
+        maxColors,
       }];
     });
 
@@ -659,7 +683,10 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
     // pattern as handleExportPdf. Without this, buildExportPayloadForZones returns
     // empty placements when the logo was just assigned and hasn't rendered yet.
     const { nextLogoStates, nextTextStates } = await ensureExportStatesForZones(visibleZones);
-    const payload = buildExportPayloadForZones(visibleZones, viewedImageUrl, nextLogoStates, nextTextStates);
+    // Use allSideZones (not just visibleZones) so fixed logos from all zones on this
+    // side are included regardless of whether the zone is active.
+    // User logos and text are still filtered to active zones inside the function.
+    const payload = buildExportPayloadForZones(allSideZones, viewedImageUrl, nextLogoStates, nextTextStates);
 
     if (payload.placements.length === 0 && payload.textPlacements.length === 0) {
       setErrorMessages(["Ingen logoer eller tekster er placeret på den nuværende side."]);
@@ -970,8 +997,13 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
                     const newWidth  = Math.max(20, node.width()  * node.scaleX());
                     const newHeight = Math.max(20, node.height() * node.scaleY());
                     node.scaleX(1); node.scaleY(1);
+                    node.width(newWidth);
+                    node.height(newHeight);
                     const clamped = clampToZone(node.x(), node.y(), newWidth, newHeight, zone);
                     node.position(clamped);
+                    // Technique filters use node.cache() — regenerate at the new dimensions
+                    // so the visual updates immediately without waiting for a colour/technique change.
+                    if (node.isCached()) node.cache();
                     setLogoStates((prev) => ({
                       ...prev,
                       [zone.id]: { x: clamped.x, y: clamped.y, width: newWidth, height: newHeight },

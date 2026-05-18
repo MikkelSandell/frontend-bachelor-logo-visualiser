@@ -9,7 +9,7 @@ interface Props {
   logos: LogoEntry[];
   onLogoUploaded: (logo: LogoEntry) => void;
   onLogoRemoved: (id: string) => void;
-  onLogoUpdated?: (id: string, newUrl: string) => void;
+  onLogoUpdated?: (id: string, newUrl: string, newId?: string) => void;
   assignedLogoId?: string | null;
   onAssign?: (logoId: string) => void;
 }
@@ -107,8 +107,27 @@ export function LogoUploader({ logos, onLogoUploaded, onLogoRemoved, onLogoUpdat
   async function handleRemoveBg(logo: LogoEntry) {
     setRemovingBgIds((prev) => new Set(prev).add(logo.id));
     try {
-      const newUrl = await removeBackground(logo.url);
-      onLogoUpdated?.(logo.id, newUrl);
+      const blobUrl = await removeBackground(logo.url);
+      if (blobUrl === logo.url) return; // removal produced no change
+
+      // Upload the processed image so the backend has the bg-removed version for export.
+      try {
+        const blob = await fetch(blobUrl).then((r) => r.blob());
+        const fileName = logo.name.replace(/\.[^.]+$/, ".png");
+        const file = new File([blob], fileName, { type: "image/png" });
+        const response = await uploadLogo(file);
+        const data = (response as any).data || response;
+        if (data?.logoUrl && data?.logoId) {
+          URL.revokeObjectURL(blobUrl);
+          onLogoUpdated?.(logo.id, data.logoUrl, data.logoId);
+          return;
+        }
+      } catch {
+        // Upload failed — fall back to blob URL for preview only.
+        // Export will still use the original server file.
+      }
+
+      onLogoUpdated?.(logo.id, blobUrl);
     } catch {
       // silently fall back to original if removal fails
     } finally {

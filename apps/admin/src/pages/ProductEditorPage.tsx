@@ -905,6 +905,10 @@ export function ProductEditorPage() {
                       const newW = Math.max(10, Math.round((node.width() * node.scaleX()) / canvasScale));
                       const newH = Math.max(10, Math.round((node.height() * node.scaleY()) / canvasScale));
                       node.scaleX(1); node.scaleY(1);
+                      node.width(newW * canvasScale);
+                      node.height(newH * canvasScale);
+                      // Technique filter uses node.cache() — regenerate at new dimensions immediately.
+                      if (node.isCached()) node.cache();
                       setZoneDraft((prev) => ({
                         ...prev,
                         fixedLogoX: Math.round(node.x() / canvasScale),
