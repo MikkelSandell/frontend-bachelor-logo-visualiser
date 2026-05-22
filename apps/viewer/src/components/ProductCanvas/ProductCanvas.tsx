@@ -314,7 +314,12 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
         const hasImage = !!(processedLogoImages[zoneId] ?? logoImages[zoneId]);
         if (!hasImage) continue;
 
-        const cfg = getTechniqueFilterConfig(zoneTechniqueAssignments[zoneId]);
+        // Fall back to the zone's first allowed technique for canvas preview so the
+        // visual effect matches the TechniqueSelector's visual default from the start.
+        // The export payload still only sends selectedTechniqueName when explicitly chosen.
+        const zone = product.printZones.find((z) => z.id === zoneId);
+        const technique = zoneTechniqueAssignments[zoneId] ?? zone?.allowedTechniques[0];
+        const cfg = getTechniqueFilterConfig(technique);
 
         const attrs: Record<string, unknown> = { filters: cfg.filters };
         if (cfg.blurRadius !== undefined) attrs.blurRadius = cfg.blurRadius;

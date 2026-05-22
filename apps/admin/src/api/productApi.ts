@@ -321,56 +321,6 @@ export async function deleteProduct(id: string): Promise<void> {
   await client.delete(`/products/${id}`);
 }
 
-export async function getProductZones(productId: string): Promise<PrintZone[]> {
-  const response = await client.get<PrintZone[] | ApiEnvelope<PrintZone[]>>(`/products/${productId}/zones`);
-  const zones = readFromEnvelope(response.data) ?? [];
-  return zones.map((zone) => ({
-    ...zone,
-    id: String(zone.id),
-    x: Number(zone.x),
-    y: Number(zone.y),
-    width: Number(zone.width),
-    height: Number(zone.height),
-    maxPhysicalWidthMm: Number(zone.maxPhysicalWidthMm),
-    maxPhysicalHeightMm: Number(zone.maxPhysicalHeightMm),
-    maxColors: Number(zone.maxColors ?? 0),
-    allowedTechniques: Array.isArray(zone.allowedTechniques)
-      ? zone.allowedTechniques.filter((technique): technique is string => typeof technique === "string")
-      : [],
-  }));
-}
-
-export async function createZone(productId: string, zone: PrintZone): Promise<PrintZone> {
-  await ensureToken();
-  const payload = toZoneUpsertPayload(zone);
-  const response = await client.post<PrintZone | ApiEnvelope<PrintZone>>(`/products/${productId}/zones`, payload);
-  const saved = readFromEnvelope(response.data);
-  return {
-    ...saved,
-    id: String(saved.id),
-    imageUrl: saved.imageUrl ?? zone.imageUrl,
-  };
-}
-
-export async function updateZone(productId: string, zoneId: string, zone: PrintZone): Promise<PrintZone> {
-  await ensureToken();
-  const payload = toZoneUpsertPayload(zone);
-  const response = await client.put<PrintZone | ApiEnvelope<PrintZone>>(
-    `/products/${productId}/zones/${zoneId}`,
-    payload
-  );
-  const saved = readFromEnvelope(response.data);
-  return {
-    ...saved,
-    id: String(saved.id),
-    imageUrl: saved.imageUrl ?? zone.imageUrl,
-  };
-}
-
-export async function deleteZone(productId: string, zoneId: string): Promise<void> {
-  await ensureToken();
-  await client.delete(`/products/${productId}/zones/${zoneId}`);
-}
 
 export interface FixedLogoUploadResult {
   logoId: string;

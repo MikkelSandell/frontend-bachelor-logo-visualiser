@@ -10,6 +10,7 @@
   "peerDependencies": {
     "class-variance-authority": ">=0.7",
     "clsx": ">=2",
+    "konva": ">=9",
     "react": ">=18",
     "tailwind-merge": ">=2"
   },

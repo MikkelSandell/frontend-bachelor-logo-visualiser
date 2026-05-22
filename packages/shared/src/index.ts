@@ -95,6 +95,7 @@ export interface LogoUploadResponse {
 // ─── UI utilities ────────────────────────────────────────────────────────────
 
 export { cn } from "./lib/utils";
+export { getTechniqueFilterConfig, type TechniqueFilterConfig } from "./lib/techniqueFilters";
 
 // ─── UI components ───────────────────────────────────────────────────────────
 
