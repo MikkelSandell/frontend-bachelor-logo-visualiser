@@ -219,7 +219,7 @@ export function ProductsPage() {
                       </div>
                     </td>
                     <td className="px-6 py-3 text-muted-foreground font-mono text-xs">{p.id}</td>
-                    <td className="px-6 py-3 text-muted-foreground">{p.printZones.length}</td>
+                    <td className="px-6 py-3 text-muted-foreground">{(p as unknown as { zoneCount?: number }).zoneCount ?? p.printZones.length}</td>
                     <td className="px-6 py-3">
                       <Badge variant={statusVariant(getProductStatus(p))}>{getProductStatus(p)}</Badge>
                     </td>

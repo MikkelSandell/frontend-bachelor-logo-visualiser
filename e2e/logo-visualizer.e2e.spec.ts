@@ -41,6 +41,8 @@ type ExportPlacement = {
   logoWidth: number;
   logoHeight: number;
   selectedTechniqueName?: string;
+  colorCount?: number;
+  maxColors?: number;
 };
 
 type ExportPngBody = {
@@ -443,7 +445,7 @@ test.describe("LogoVisualizer frontend E2E", () => {
     await expect(row.getByText("FullyConfigured")).toBeVisible();
 
     // Zone count cell must show 1.
-    await expect(row.getByText("1")).toBeVisible();
+    await expect(row.getByText("1", { exact: true })).toBeVisible();
 
     const searchInput = page.getByPlaceholder("Søg på produktnavn…");
 
@@ -484,5 +486,83 @@ test.describe("LogoVisualizer frontend E2E", () => {
     const stillDisabled = await pngButton.isDisabled();
 
     expect(sawError || stillDisabled).toBeTruthy();
+  });
+
+  test("E2E-12 Viewer color count appears in export payload", async ({ page, request }) => {
+    // createTestZone defaults to maxColors: 4 — ColorCountSelector renders buttons 1-4
+    const { product } = await setupProductWithZone(state, request);
+
+    await openProductInViewer(page, product.title);
+    await uploadPngLogo(page);
+
+    // The "Antal farver (maks X)" paragraph is unique to ColorCountSelector.
+    // Scope button clicks to its parent container to avoid collisions with other "2" text.
+    const colorSection = page.locator("div").filter({
+      has: page.locator("p", { hasText: /Antal farver.*maks/ }),
+    });
+    await expect(colorSection.getByRole("button", { name: "2", exact: true })).toBeVisible({
+      timeout: 10_000,
+    });
+    await colorSection.getByRole("button", { name: "2", exact: true }).click();
+
+    const exportRequestPromise = page.waitForRequest(
+      (req) => req.url().includes("/api/export/png") && req.method() === "POST"
+    );
+    await page.getByRole("button", { name: "Download som PNG" }).click();
+
+    const exportBody = (await exportRequestPromise).postDataJSON() as ExportPngBody;
+    expect(exportBody.placements.length).toBeGreaterThan(0);
+    expect(exportBody.placements[0].colorCount).toBe(2);
+  });
+
+  test("E2E-13 Viewer PDF export covers both sides when Front and Back zones are active", async ({ page, request }) => {
+    // PNG export is per-side (one background image). PDF export creates one page per side,
+    // so it is the correct way to verify that logos on both Front and Back reach the backend.
+    const product = await createTestProduct(
+      request,
+      state.token,
+      uniqueTitle("E2E Multi Zone Export"),
+      productPngFixturePath()
+    );
+    state.createdProductIds.push(product.id);
+    const frontZone = await createTestZone(request, state.token, product.id, "Front");
+    const backZone  = await createTestZone(request, state.token, product.id, "Back");
+
+    await openProductInViewer(page, product.title);
+
+    // ZoneSelector is shown for multi-zone products — activate Front first.
+    const frontButton = page.getByRole("button", { name: "Front" }).first();
+    const backButton  = page.getByRole("button", { name: "Back" }).first();
+    await expect(frontButton).toBeVisible({ timeout: 10_000 });
+    await frontButton.click();
+
+    // Upload logo — thumbnail click assigns it to the currently focused zone (Front).
+    const logoCapture = await uploadPngLogo(page);
+
+    // Activate Back and assign the same logo to it.
+    await backButton.click();
+    const logoName = path.basename(logoPngFixturePath());
+    const logoThumb = page.getByTitle(logoName).first();
+    await expect(logoThumb).toBeVisible();
+    await logoThumb.click();
+
+    // PDF export — builds one page per side; each page should contain a placement.
+    const exportRequestPromise = page.waitForRequest(
+      (req) => req.url().includes("/api/export/pdf") && req.method() === "POST"
+    );
+    await page.getByRole("button", { name: "Download som PDF" }).click();
+
+    const exportBody = (await exportRequestPromise).postDataJSON() as ExportPdfBody;
+    expect(exportBody.pages.length).toBeGreaterThanOrEqual(2);
+
+    const frontPage = exportBody.pages.find((p) =>
+      p.placements.some((pl) => pl.zoneId === String(frontZone.id))
+    );
+    const backPage = exportBody.pages.find((p) =>
+      p.placements.some((pl) => pl.zoneId === String(backZone.id))
+    );
+    expect(frontPage).toBeTruthy();
+    expect(backPage).toBeTruthy();
+    expect(logoCapture.logoId).toBeTruthy();
   });
 });

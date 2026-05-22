@@ -117,7 +117,7 @@ export async function createTestZone(
     maxPhysicalWidthMm: 120,
     maxPhysicalHeightMm: 100,
     maxColors: 4,
-    allowedTechniques,
+    allowedTechniqueNames: allowedTechniques,
   };
 
   const response = await request.post(`${API_BASE_URL}/api/products/${productId}/zones`, {
