@@ -84,7 +84,21 @@ export function App({ preloadedLogo, preloadedProductId }: Props) {
   function toSideZoneId(id: string, p: Product): string {
     const zone = p.printZones.find((z) => z.id === id);
     if (!zone) return id;
-    if (/back/i.test(zone.name))
+
+    // Mirror ProductCanvas.isBackZone: name first, then imageUrl fallback
+    const namedBack = p.printZones.find((z) => z.name.trim().toLowerCase() === "back");
+    const backSideImageUrl =
+      namedBack?.imageUrl ??
+      (p.printZones.find((z) => z.imageUrl && z.imageUrl !== p.imageUrl)?.imageUrl ?? null);
+
+    const isBack =
+      /back/i.test(zone.name) ||
+      (!(/front/i.test(zone.name)) &&
+        backSideImageUrl !== null &&
+        !!zone.imageUrl &&
+        zone.imageUrl === backSideImageUrl);
+
+    if (isBack)
       return p.printZones.find((z) => /^back$/i.test(z.name))?.id ?? id;
     return p.printZones.find((z) => /^front$/i.test(z.name))?.id ?? id;
   }

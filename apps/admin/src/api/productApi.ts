@@ -41,6 +41,7 @@ type ZoneUpsertPayload = {
   maxPhysicalWidthMm: number;
   maxPhysicalHeightMm: number;
   maxColors: number;
+  imageUrl?: string;
   allowedTechniques: string[];
   fixedLogoUrl?: string;
   fixedLogoFileId?: string;
@@ -190,6 +191,7 @@ function toZoneUpsertPayload(zone: PrintZone): ZoneUpsertPayload {
     maxPhysicalWidthMm: Math.round(zone.maxPhysicalWidthMm),
     maxPhysicalHeightMm: Math.round(zone.maxPhysicalHeightMm),
     maxColors: Math.round(zone.maxColors),
+    imageUrl: zone.imageUrl || undefined,
     allowedTechniques: [...zone.allowedTechniques],
     fixedLogoUrl: zone.fixedLogoUrl,
     fixedLogoFileId: zone.fixedLogoFileId,

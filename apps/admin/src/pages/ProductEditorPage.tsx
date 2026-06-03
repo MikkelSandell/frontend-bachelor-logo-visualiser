@@ -237,6 +237,8 @@ export function ProductEditorPage() {
   const [zoneDraft, setZoneDraft] = useState<ZoneDraft>(EMPTY_DRAFT);
   const [editingZoneId, setEditingZoneId] = useState<string | null>(null);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
+  const [viewedSide, setViewedSide] = useState<"front" | "back">("front");
+  const [manualBackImageUrl, setManualBackImageUrl] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -252,7 +254,39 @@ export function ProductEditorPage() {
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
   const [drawPreview, setDrawPreview] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
-  const [productImage] = useImage(product?.imageUrl ?? "");
+  // Mirror viewer's side detection: name-based first, imageUrl fallback for unnamed zones.
+  const backSideImageUrl = useMemo(() => {
+    if (!product) return null;
+    const namedBack = zones.find((z) => z.name.trim().toLowerCase() === "back");
+    if (namedBack?.imageUrl) return namedBack.imageUrl;
+    for (const z of zones) {
+      if (z.imageUrl && z.imageUrl !== product.imageUrl) return z.imageUrl;
+    }
+    return null;
+  }, [zones, product]);
+
+  function isBackZone(z: PrintZone): boolean {
+    if (/back/i.test(z.name)) return true;
+    if (/front/i.test(z.name)) return false;
+    return backSideImageUrl !== null && !!z.imageUrl && z.imageUrl === backSideImageUrl;
+  }
+
+  const effectiveBackImageUrl = backSideImageUrl ?? (manualBackImageUrl || null);
+
+  const currentSideImageUrl = viewedSide === "back" && effectiveBackImageUrl
+    ? effectiveBackImageUrl
+    : (product?.imageUrl ?? "");
+
+  const sideZones = useMemo(() => {
+    if (!product) return zones;
+    if (viewedSide === "front") return zones.filter((z) => !isBackZone(z));
+    const backUrl = effectiveBackImageUrl;
+    if (!backUrl) return [];
+    return zones.filter((z) => isBackZone(z));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zones, product, viewedSide, effectiveBackImageUrl, backSideImageUrl]);
+
+  const [productImage] = useImage(currentSideImageUrl);
   const [fixedLogoImage] = useImage(editingZoneId ? (zoneDraft.fixedLogoUrl ?? "") : "");
   const [uploadingFixedLogo, setUploadingFixedLogo] = useState(false);
   const [removingFixedLogoBg, setRemovingFixedLogoBg] = useState(false);
@@ -475,12 +509,16 @@ export function ProductEditorPage() {
       return;
     }
 
+    const preservedImageUrl = editingZoneId
+      ? (zones.find((z) => z.id === editingZoneId)?.imageUrl || currentSideImageUrl)
+      : currentSideImageUrl;
+
     const nextZone: PrintZone = toZone(
       {
         ...zoneDraft,
         id: editingZoneId ?? `temp-${Date.now()}`,
       },
-      product.imageUrl
+      preservedImageUrl
     );
 
     if (editingZoneId) {
@@ -495,7 +533,14 @@ export function ProductEditorPage() {
     resetZoneDraft();
   }
 
+  function handleSideSwitch(side: "front" | "back") {
+    if (editingZoneId) resetZoneDraft();
+    setSelectedZoneId(null);
+    setViewedSide(side);
+  }
+
   function handleZoneEdit(zone: PrintZone) {
+    setViewedSide(isBackZone(zone) ? "back" : "front");
     setEditingZoneId(zone.id);
     setSelectedZoneId(zone.id);
     setZoneDraft(toDraft(zone));
@@ -748,10 +793,44 @@ export function ProductEditorPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Canvas</CardTitle>
-          <CardDescription>
-            Klik og træk på billedet for at tegne en ny zone. Klik på en eksisterende zone for at vælge den, og tryk "Rediger zone" for at flytte/resize den.
-          </CardDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle>Canvas</CardTitle>
+              <CardDescription>
+                Klik og træk på billedet for at tegne en ny zone. Klik på en eksisterende zone for at vælge den, og tryk "Rediger zone" for at flytte/resize den.
+              </CardDescription>
+            </div>
+            <div className="flex flex-col items-end gap-2 shrink-0">
+              <div className="flex rounded-md border border-border overflow-hidden text-sm font-medium">
+                <button
+                  type="button"
+                  onClick={() => handleSideSwitch("front")}
+                  className={`px-4 py-1.5 transition-colors ${viewedSide === "front" ? "bg-primary text-white" : "bg-background hover:bg-muted"}`}
+                >
+                  Forside
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSideSwitch("back")}
+                  className={`px-4 py-1.5 transition-colors border-l border-border ${viewedSide === "back" ? "bg-primary text-white" : "bg-background hover:bg-muted"}`}
+                >
+                  Bagside
+                </button>
+              </div>
+              {viewedSide === "back" && !backSideImageUrl && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Bagside billed-URL:</span>
+                  <input
+                    type="text"
+                    value={manualBackImageUrl}
+                    onChange={(e) => setManualBackImageUrl(e.target.value)}
+                    placeholder="https://…"
+                    className="text-xs border border-input rounded px-2 py-1 w-64 bg-background"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-auto border rounded-md" style={{ cursor: drawStart ? "crosshair" : "default" }}>
@@ -797,7 +876,7 @@ export function ProductEditorPage() {
                   maxPhysicalHeightMm: 100,
                   maxColors: 0,
                   allowedTechniques: [],
-                  imageUrl: product.imageUrl,
+                  imageUrl: currentSideImageUrl,
                 };
                 setZones((prev) => [...prev, newZone]);
                 setSelectedZoneId(newZone.id);
@@ -807,7 +886,7 @@ export function ProductEditorPage() {
               <Layer>
                 {productImage && <KonvaImage image={productImage} width={canvasWidth} height={canvasHeight} listening={false} />}
 
-                {zones.map((zone) => {
+                {sideZones.map((zone) => {
                   const isSelected = zone.id === selectedZoneId;
                   const isEditing = zone.id === editingZoneId;
                   return (
@@ -857,7 +936,7 @@ export function ProductEditorPage() {
                   );
                 })}
 
-                {zones.map((zone) => (
+                {sideZones.map((zone) => (
                   <Text
                     key={`${zone.id}-label`}
                     x={displayXForZone(zone) * canvasScale + 4}
@@ -1331,13 +1410,20 @@ export function ProductEditorPage() {
           <CardContent className="space-y-3">
             {zones.length === 0 && <p className="text-sm text-muted-foreground">Ingen zoner endnu. Tegn en zone på billedet ovenfor.</p>}
 
-            {zones.map((zone) => (
+            {zones.map((zone) => {
+              const isBack = isBackZone(zone);
+              return (
               <div
                 key={zone.id}
                 className={`rounded-md border p-3 space-y-1.5 transition-colors ${zone.id === editingZoneId ? "border-blue-300 bg-blue-50" : ""}`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <p className="font-medium">{zone.name || <span className="text-muted-foreground italic">(uden navn)</span>}</p>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <p className="font-medium truncate">{zone.name || <span className="text-muted-foreground italic">(uden navn)</span>}</p>
+                    <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${isBack ? "bg-indigo-100 text-indigo-700" : "bg-orange-100 text-orange-700"}`}>
+                      {isBack ? "Bagside" : "Forside"}
+                    </span>
+                  </div>
                   <div className="flex items-center gap-2">
                     <Button
                       size="sm"
@@ -1375,7 +1461,8 @@ export function ProductEditorPage() {
                   </p>
                 )}
               </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       </div>
