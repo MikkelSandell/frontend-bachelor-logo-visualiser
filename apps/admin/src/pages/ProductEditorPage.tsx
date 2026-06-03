@@ -458,7 +458,7 @@ export function ProductEditorPage() {
       };
       img.src = result.logoUrl;
     } catch (error) {
-      setErrors(["Kunne ikke uploade fast logo. Prøv igen."]);
+      setErrors(["Kunne ikke uploade bum-artikel. Prøv igen."]);
     } finally {
       setUploadingFixedLogo(false);
     }
@@ -1290,7 +1290,7 @@ export function ProductEditorPage() {
                 <div className="space-y-2">
                   <Label className="flex items-center gap-1.5">
                     <Lock className="h-3.5 w-3.5" />
-                    Fast logo
+                    Bum-artikel
                   </Label>
                   {zoneDraft.fixedLogoUrl ? (
                     <div className="space-y-2">
@@ -1298,7 +1298,7 @@ export function ProductEditorPage() {
                       <div className="h-10 w-10 shrink-0 rounded border border-amber-200 bg-[repeating-conic-gradient(#e5e7eb_0%_25%,#fff_0%_50%)] bg-[length:8px_8px] flex items-center justify-center overflow-hidden">
                         {removingFixedLogoBg
                           ? <Loader2 className="h-4 w-4 animate-spin text-amber-600" />
-                          : <img src={zoneDraft.fixedLogoUrl} alt="Fast logo" className="max-h-full max-w-full object-contain" />
+                          : <img src={zoneDraft.fixedLogoUrl} alt="Bum-artikel" className="max-h-full max-w-full object-contain" />
                         }
                       </div>
                       <div className="flex flex-col gap-1 flex-1 min-w-0">
@@ -1323,7 +1323,7 @@ export function ProductEditorPage() {
                         onClick={handleRemoveFixedLogo}
                         disabled={removingFixedLogoBg}
                         className="text-amber-700 hover:text-red-600 disabled:opacity-40"
-                        aria-label="Fjern fast logo"
+                        aria-label="Fjern bum-artikel"
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -1331,7 +1331,7 @@ export function ProductEditorPage() {
 
                     {/* Technique for fixed logo */}
                     <div className="space-y-1">
-                      <Label className="text-xs">Print-teknik for fast logo</Label>
+                      <Label className="text-xs">Print-teknik for bum-artikel</Label>
                       <div className="flex flex-wrap gap-1.5">
                         {["", ...zoneDraft.allowedTechniques].map((t) => (
                           <button
@@ -1385,7 +1385,7 @@ export function ProductEditorPage() {
                         className="gap-2"
                       >
                         {uploadingFixedLogo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                        Upload fast logo
+                        Upload bum-artikel
                       </Button>
                     </div>
                   )}
@@ -1457,7 +1457,7 @@ export function ProductEditorPage() {
                 <p className="text-xs text-muted-foreground">Teknikker: {zone.allowedTechniques.join(", ") || "Ingen"}</p>
                 {zone.fixedLogoUrl && (
                   <p className="text-xs text-amber-700 flex items-center gap-1">
-                    <Lock className="h-3 w-3" /> Fast logo sat
+                    <Lock className="h-3 w-3" /> Bum-artikel sat
                   </p>
                 )}
               </div>
