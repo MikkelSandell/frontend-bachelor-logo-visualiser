@@ -17,6 +17,8 @@
 # | Viewer passes the selected print technique to the export request | Viewer print technique selection (V7) | E2E-09 | Confirms that the selected technique slug appears in the PNG export request body. |
 # | Viewer displays a zone selector for a product with multiple print zones | Viewer multi-zone selection (V3) | E2E-10 | Confirms that ZoneSelector renders for multi-zone products and that activating zones updates the technique panel. |
 # | Admin product list displays products with their setup status and supports search | Admin product list and search filter (A7) | E2E-11 | Confirms that a created product appears in the list with the correct status badge and that the name search filter works. |
+# | Viewer color count selection is included in export payload | Viewer color-count export preview (V7) | E2E-12 | Confirms the selected color count is sent in the PNG export payload. |
+# | Viewer exports both front and back sides in a multi-zone PDF | Viewer multi-side PDF export | E2E-13 | Confirms a product with Front and Back zones produces pages for both zones in PDF export. |
 
 Feature: Logo Visualizer acceptance scenarios
 
@@ -85,6 +87,20 @@ Feature: Logo Visualizer acceptance scenarios
     When the user opens the viewer and selects that product
     Then the zone selector should be visible with all print zones listed
     And activating both zones should make the technique panel reflect the currently focused zone
+
+  Scenario: Viewer can select a color count and include it in export payload
+    Given a product with a print zone is open in the viewer
+    And a valid logo has been uploaded and assigned
+    When the user selects a specific color count for the logo
+    And the user downloads the design as PNG
+    Then the export payload should contain the selected colorCount
+
+  Scenario: Viewer exports both front and back sides in a multi-zone PDF
+    Given a product with Front and Back print zones exists
+    And the user has uploaded and assigned a logo to both zones
+    When the user downloads the design as PDF
+    Then the PDF export should contain at least one page for the front zone
+    And the PDF export should contain at least one page for the back zone
 
   Scenario: Admin product list displays products with their setup status and supports name search
     Given a fully configured product with at least one print zone exists
