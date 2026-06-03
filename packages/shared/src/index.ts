@@ -31,18 +31,18 @@ export interface PrintZone {
   maxColors: number;
   /** Product image URL specific to this print position (e.g. back, chest, arm) */
   imageUrl: string;
-  /** Pre-set logo locked by admin — viewer cannot remove it, only adjust own logo on top */
-  fixedLogoUrl?: string;
-  /** File ID used by the export backend to resolve the fixed logo on disk */
-  fixedLogoFileId?: string;
-  fixedLogoX?: number;
-  fixedLogoY?: number;
-  fixedLogoWidth?: number;
-  fixedLogoHeight?: number;
-  /** Print technique to simulate on the fixed logo (set by admin, read-only in viewer) */
-  fixedLogoTechnique?: string;
+  /** Pre-set bum-artikel logo locked by admin — viewer cannot remove it, only adjust own logo on top */
+  bumArtikelUrl?: string;
+  /** File ID used by the export backend to resolve the bum-artikel on disk */
+  bumArtikelFileId?: string;
+  bumArtikelX?: number;
+  bumArtikelY?: number;
+  bumArtikelWidth?: number;
+  bumArtikelHeight?: number;
+  /** Print technique to simulate on the bum-artikel (set by admin, read-only in viewer) */
+  bumArtikelTechnique?: string;
   /** Colour count to simulate (0 = full colour, 1 = black, 2 = greyscale, etc.) */
-  fixedLogoColorCount?: number;
+  bumArtikelColorCount?: number;
 }
 
 // ─── Product ─────────────────────────────────────────────────────────────────

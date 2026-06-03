@@ -14,7 +14,7 @@ import {
   importProducts,
   parseApiError,
   updateProduct,
-  uploadFixedLogo,
+  uploadBumArtikel,
 } from "../api/productApi";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -35,14 +35,14 @@ type ZoneDraft = {
   maxPhysicalHeightMm: number;
   maxColors: number;
   allowedTechniques: string[];
-  fixedLogoUrl?: string;
-  fixedLogoFileId?: string;
-  fixedLogoX?: number;
-  fixedLogoY?: number;
-  fixedLogoWidth?: number;
-  fixedLogoHeight?: number;
-  fixedLogoTechnique?: string;
-  fixedLogoColorCount?: number;
+  bumArtikelUrl?: string;
+  bumArtikelFileId?: string;
+  bumArtikelX?: number;
+  bumArtikelY?: number;
+  bumArtikelWidth?: number;
+  bumArtikelHeight?: number;
+  bumArtikelTechnique?: string;
+  bumArtikelColorCount?: number;
 };
 
 const TECHNIQUE_SET = new Set<string>(PRINT_TECHNIQUES);
@@ -87,14 +87,14 @@ function toDraft(zone: PrintZone): ZoneDraft {
     maxPhysicalHeightMm: zone.maxPhysicalHeightMm,
     maxColors: zone.maxColors,
     allowedTechniques: [...zone.allowedTechniques],
-    fixedLogoUrl: zone.fixedLogoUrl,
-    fixedLogoFileId: zone.fixedLogoFileId,
-    fixedLogoX: zone.fixedLogoX,
-    fixedLogoY: zone.fixedLogoY,
-    fixedLogoWidth: zone.fixedLogoWidth,
-    fixedLogoHeight: zone.fixedLogoHeight,
-    fixedLogoTechnique: zone.fixedLogoTechnique,
-    fixedLogoColorCount: zone.fixedLogoColorCount,
+    bumArtikelUrl: zone.bumArtikelUrl,
+    bumArtikelFileId: zone.bumArtikelFileId,
+    bumArtikelX: zone.bumArtikelX,
+    bumArtikelY: zone.bumArtikelY,
+    bumArtikelWidth: zone.bumArtikelWidth,
+    bumArtikelHeight: zone.bumArtikelHeight,
+    bumArtikelTechnique: zone.bumArtikelTechnique,
+    bumArtikelColorCount: zone.bumArtikelColorCount,
   };
 }
 
@@ -111,14 +111,14 @@ function toZone(draft: ZoneDraft, productImageUrl: string): PrintZone {
     maxColors: draft.maxColors,
     allowedTechniques: draft.allowedTechniques,
     imageUrl: productImageUrl,
-    fixedLogoUrl: draft.fixedLogoUrl,
-    fixedLogoFileId: draft.fixedLogoFileId,
-    fixedLogoX: draft.fixedLogoX,
-    fixedLogoY: draft.fixedLogoY,
-    fixedLogoWidth: draft.fixedLogoWidth,
-    fixedLogoHeight: draft.fixedLogoHeight,
-    fixedLogoTechnique: draft.fixedLogoTechnique,
-    fixedLogoColorCount: draft.fixedLogoColorCount,
+    bumArtikelUrl: draft.bumArtikelUrl,
+    bumArtikelFileId: draft.bumArtikelFileId,
+    bumArtikelX: draft.bumArtikelX,
+    bumArtikelY: draft.bumArtikelY,
+    bumArtikelWidth: draft.bumArtikelWidth,
+    bumArtikelHeight: draft.bumArtikelHeight,
+    bumArtikelTechnique: draft.bumArtikelTechnique,
+    bumArtikelColorCount: draft.bumArtikelColorCount,
   };
 }
 
@@ -287,14 +287,14 @@ export function ProductEditorPage() {
   }, [zones, product, viewedSide, effectiveBackImageUrl, backSideImageUrl]);
 
   const [productImage] = useImage(currentSideImageUrl);
-  const [fixedLogoImage] = useImage(editingZoneId ? (zoneDraft.fixedLogoUrl ?? "") : "");
-  const [uploadingFixedLogo, setUploadingFixedLogo] = useState(false);
-  const [removingFixedLogoBg, setRemovingFixedLogoBg] = useState(false);
-  const [processedFixedLogoImage, setProcessedFixedLogoImage] = useState<HTMLImageElement | null>(null);
+  const [bumArtikelImage] = useImage(editingZoneId ? (zoneDraft.bumArtikelUrl ?? "") : "");
+  const [uploadingBumArtikel, setUploadingBumArtikel] = useState(false);
+  const [removingBumArtikelBg, setRemovingBumArtikelBg] = useState(false);
+  const [processedBumArtikelImage, setProcessedBumArtikelImage] = useState<HTMLImageElement | null>(null);
 
   const transformerRef = useRef<Konva.Transformer | null>(null);
-  const fixedLogoTransformerRef = useRef<Konva.Transformer | null>(null);
-  const fixedLogoNodeRef = useRef<Konva.Image | null>(null);
+  const bumArtikelTransformerRef = useRef<Konva.Transformer | null>(null);
+  const bumArtikelNodeRef = useRef<Konva.Image | null>(null);
   const zoneRectRefs = useRef<Record<string, Konva.Rect | null>>({});
 
   const canvasScale = useMemo(() => {
@@ -378,37 +378,37 @@ export function ProductEditorPage() {
   }, [editingZoneId, zones]);
 
   useEffect(() => {
-    const tr = fixedLogoTransformerRef.current;
+    const tr = bumArtikelTransformerRef.current;
     if (!tr) return;
-    if (editingZoneId && fixedLogoImage && fixedLogoNodeRef.current) {
-      tr.nodes([fixedLogoNodeRef.current]);
+    if (editingZoneId && bumArtikelImage && bumArtikelNodeRef.current) {
+      tr.nodes([bumArtikelNodeRef.current]);
     } else {
       tr.nodes([]);
     }
     tr.getLayer()?.batchDraw();
-  }, [editingZoneId, fixedLogoImage]);
+  }, [editingZoneId, bumArtikelImage]);
 
-  // ─── Process fixed logo colour count for canvas preview ───────────────────
+  // ─── Process bum-artikel colour count for canvas preview ──────────────────
   useEffect(() => {
     let cancelled = false;
-    const count = zoneDraft.fixedLogoColorCount ?? 0;
-    if (!fixedLogoImage || count === 0) {
-      setProcessedFixedLogoImage(null);
+    const count = zoneDraft.bumArtikelColorCount ?? 0;
+    if (!bumArtikelImage || count === 0) {
+      setProcessedBumArtikelImage(null);
       return;
     }
-    processImageForColors(fixedLogoImage.src, count)
-      .then((img) => { if (!cancelled) setProcessedFixedLogoImage(img); })
+    processImageForColors(bumArtikelImage.src, count)
+      .then((img) => { if (!cancelled) setProcessedBumArtikelImage(img); })
       .catch(() => {});
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fixedLogoImage, zoneDraft.fixedLogoColorCount]);
+  }, [bumArtikelImage, zoneDraft.bumArtikelColorCount]);
 
-  // ─── Apply technique filter to fixed logo node for canvas preview ─────────
+  // ─── Apply technique filter to bum-artikel node for canvas preview ────────
   useEffect(() => {
     const raf = requestAnimationFrame(() => {
-      const node = fixedLogoNodeRef.current;
-      if (!node || !fixedLogoImage) return;
-      const cfg = getTechniqueFilterConfig(zoneDraft.fixedLogoTechnique);
+      const node = bumArtikelNodeRef.current;
+      if (!node || !bumArtikelImage) return;
+      const cfg = getTechniqueFilterConfig(zoneDraft.bumArtikelTechnique);
       const attrs: Record<string, unknown> = { filters: cfg.filters };
       if (cfg.blurRadius !== undefined) attrs.blurRadius = cfg.blurRadius;
       if (cfg.noise      !== undefined) attrs.noise      = cfg.noise;
@@ -420,7 +420,7 @@ export function ProductEditorPage() {
     });
     return () => cancelAnimationFrame(raf);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zoneDraft.fixedLogoTechnique, processedFixedLogoImage, fixedLogoImage]);
+  }, [zoneDraft.bumArtikelTechnique, processedBumArtikelImage, bumArtikelImage]);
 
   function resetZoneDraft() {
     setEditingZoneId(null);
@@ -433,26 +433,26 @@ export function ProductEditorPage() {
     const w = Math.round(imgWidth * fitScale);
     const h = Math.round(imgHeight * fitScale);
     return {
-      fixedLogoX: Math.round(zone.x + (zone.width - w) / 2),
-      fixedLogoY: Math.round(zone.y + (zone.height - h) / 2),
-      fixedLogoWidth: w,
-      fixedLogoHeight: h,
+      bumArtikelX: Math.round(zone.x + (zone.width - w) / 2),
+      bumArtikelY: Math.round(zone.y + (zone.height - h) / 2),
+      bumArtikelWidth: w,
+      bumArtikelHeight: h,
     };
   }
 
-  async function handleFixedLogoUpload(file: File) {
-    if (uploadingFixedLogo) return;
-    setUploadingFixedLogo(true);
+  async function handleBumArtikelUpload(file: File) {
+    if (uploadingBumArtikel) return;
+    setUploadingBumArtikel(true);
     setErrors([]);
     try {
-      const result = await uploadFixedLogo(file);
+      const result = await uploadBumArtikel(file);
       const img = new Image();
       img.onload = () => {
         const fit = fitLogoToZone(img.naturalWidth, img.naturalHeight, zoneDraft);
         setZoneDraft((prev) => ({
           ...prev,
-          fixedLogoUrl: result.logoUrl,
-          fixedLogoFileId: result.logoId,
+          bumArtikelUrl: result.logoUrl,
+          bumArtikelFileId: result.logoId,
           ...fit,
         }));
       };
@@ -460,42 +460,42 @@ export function ProductEditorPage() {
     } catch (error) {
       setErrors(["Kunne ikke uploade bum-artikel. Prøv igen."]);
     } finally {
-      setUploadingFixedLogo(false);
+      setUploadingBumArtikel(false);
     }
   }
 
-  function handleRemoveFixedLogo() {
+  function handleRemoveBumArtikel() {
     setZoneDraft((prev) => ({
       ...prev,
-      fixedLogoUrl: undefined,
-      fixedLogoFileId: undefined,
-      fixedLogoX: undefined,
-      fixedLogoY: undefined,
-      fixedLogoWidth: undefined,
-      fixedLogoHeight: undefined,
+      bumArtikelUrl: undefined,
+      bumArtikelFileId: undefined,
+      bumArtikelX: undefined,
+      bumArtikelY: undefined,
+      bumArtikelWidth: undefined,
+      bumArtikelHeight: undefined,
     }));
   }
 
-  async function handleRemoveFixedLogoBg() {
-    if (!zoneDraft.fixedLogoUrl || removingFixedLogoBg) return;
-    setRemovingFixedLogoBg(true);
+  async function handleRemoveBumArtikelBg() {
+    if (!zoneDraft.bumArtikelUrl || removingBumArtikelBg) return;
+    setRemovingBumArtikelBg(true);
     setErrors([]);
     try {
-      const processedBlobUrl = await removeBackground(zoneDraft.fixedLogoUrl);
+      const processedBlobUrl = await removeBackground(zoneDraft.bumArtikelUrl);
       // Re-upload so the stored URL is persistent (blob URLs vanish on refresh)
       const blob = await fetch(processedBlobUrl).then((r) => r.blob());
       URL.revokeObjectURL(processedBlobUrl);
-      const file = new File([blob], "fixed-logo-no-bg.png", { type: "image/png" });
-      const result = await uploadFixedLogo(file);
+      const file = new File([blob], "bum-artikel-no-bg.png", { type: "image/png" });
+      const result = await uploadBumArtikel(file);
       setZoneDraft((prev) => ({
         ...prev,
-        fixedLogoUrl: result.logoUrl,
-        fixedLogoFileId: result.logoId,
+        bumArtikelUrl: result.logoUrl,
+        bumArtikelFileId: result.logoId,
       }));
     } catch {
       setErrors(["Kunne ikke fjerne baggrund. Prøv igen."]);
     } finally {
-      setRemovingFixedLogoBg(false);
+      setRemovingBumArtikelBg(false);
     }
   }
 
@@ -941,7 +941,7 @@ export function ProductEditorPage() {
                     key={`${zone.id}-label`}
                     x={displayXForZone(zone) * canvasScale + 4}
                     y={zone.y * canvasScale + 4}
-                    text={(zone.name || "(uden navn)") + (zone.fixedLogoUrl ? " 🔒" : "")}
+                    text={(zone.name || "(uden navn)") + (zone.bumArtikelUrl ? " 🔒" : "")}
                     fontSize={12}
                     fill={zone.id === selectedZoneId ? "#0057ff" : "#ff6633"}
                     listening={false}
@@ -962,23 +962,23 @@ export function ProductEditorPage() {
                   />
                 )}
 
-                {/* Fixed logo — draggable/resizable when editing that zone */}
-                {editingZoneId && fixedLogoImage && zoneDraft.fixedLogoX != null && (
+                {/* Bum-artikel — draggable/resizable when editing that zone */}
+                {editingZoneId && bumArtikelImage && zoneDraft.bumArtikelX != null && (
                   <KonvaImage
-                    ref={fixedLogoNodeRef}
-                    image={processedFixedLogoImage ?? fixedLogoImage}
-                    x={displayXForZone({ name: zoneDraft.name, x: zoneDraft.fixedLogoX ?? 0, width: zoneDraft.fixedLogoWidth ?? 0 }) * canvasScale}
-                    y={(zoneDraft.fixedLogoY ?? 0) * canvasScale}
-                    width={(zoneDraft.fixedLogoWidth ?? 0) * canvasScale}
-                    height={(zoneDraft.fixedLogoHeight ?? 0) * canvasScale}
+                    ref={bumArtikelNodeRef}
+                    image={processedBumArtikelImage ?? bumArtikelImage}
+                    x={displayXForZone({ name: zoneDraft.name, x: zoneDraft.bumArtikelX ?? 0, width: zoneDraft.bumArtikelWidth ?? 0 }) * canvasScale}
+                    y={(zoneDraft.bumArtikelY ?? 0) * canvasScale}
+                    width={(zoneDraft.bumArtikelWidth ?? 0) * canvasScale}
+                    height={(zoneDraft.bumArtikelHeight ?? 0) * canvasScale}
                     draggable
                     dragBoundFunc={(pos) => {
                       const isRightArm = /right/i.test(zoneDraft.name);
                       const dispZoneX = isRightArm && product
                         ? product.imageWidth - zoneDraft.x - zoneDraft.width
                         : zoneDraft.x;
-                      const w = (zoneDraft.fixedLogoWidth ?? 0) * canvasScale;
-                      const h = (zoneDraft.fixedLogoHeight ?? 0) * canvasScale;
+                      const w = (zoneDraft.bumArtikelWidth ?? 0) * canvasScale;
+                      const h = (zoneDraft.bumArtikelHeight ?? 0) * canvasScale;
                       return {
                         x: Math.max(dispZoneX * canvasScale, Math.min(pos.x, (dispZoneX + zoneDraft.width) * canvasScale - w)),
                         y: Math.max(zoneDraft.y * canvasScale, Math.min(pos.y, (zoneDraft.y + zoneDraft.height) * canvasScale - h)),
@@ -988,12 +988,12 @@ export function ProductEditorPage() {
                       const isRightArm = /right/i.test(zoneDraft.name);
                       const displayX = e.target.x() / canvasScale;
                       const rawX = isRightArm && product
-                        ? product.imageWidth - displayX - (zoneDraft.fixedLogoWidth ?? 0)
+                        ? product.imageWidth - displayX - (zoneDraft.bumArtikelWidth ?? 0)
                         : displayX;
                       setZoneDraft((prev) => ({
                         ...prev,
-                        fixedLogoX: Math.round(rawX),
-                        fixedLogoY: Math.round(e.target.y() / canvasScale),
+                        bumArtikelX: Math.round(rawX),
+                        bumArtikelY: Math.round(e.target.y() / canvasScale),
                       }));
                     }}
                     onTransformEnd={(e) => {
@@ -1012,17 +1012,17 @@ export function ProductEditorPage() {
                         : displayX;
                       setZoneDraft((prev) => ({
                         ...prev,
-                        fixedLogoX: Math.round(rawX),
-                        fixedLogoY: Math.round(node.y() / canvasScale),
-                        fixedLogoWidth: newW,
-                        fixedLogoHeight: newH,
+                        bumArtikelX: Math.round(rawX),
+                        bumArtikelY: Math.round(node.y() / canvasScale),
+                        bumArtikelWidth: newW,
+                        bumArtikelHeight: newH,
                       }));
                     }}
                   />
                 )}
 
                 <Transformer
-                  ref={fixedLogoTransformerRef}
+                  ref={bumArtikelTransformerRef}
                   keepRatio
                   rotateEnabled={false}
                   enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]}
@@ -1286,19 +1286,19 @@ export function ProductEditorPage() {
                   </div>
                 </div>
 
-                {/* Fixed logo */}
+                {/* Bum-artikel */}
                 <div className="space-y-2">
                   <Label className="flex items-center gap-1.5">
                     <Lock className="h-3.5 w-3.5" />
                     Bum-artikel
                   </Label>
-                  {zoneDraft.fixedLogoUrl ? (
+                  {zoneDraft.bumArtikelUrl ? (
                     <div className="space-y-2">
                     <div className="flex items-center gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
                       <div className="h-10 w-10 shrink-0 rounded border border-amber-200 bg-[repeating-conic-gradient(#e5e7eb_0%_25%,#fff_0%_50%)] bg-[length:8px_8px] flex items-center justify-center overflow-hidden">
-                        {removingFixedLogoBg
+                        {removingBumArtikelBg
                           ? <Loader2 className="h-4 w-4 animate-spin text-amber-600" />
-                          : <img src={zoneDraft.fixedLogoUrl} alt="Bum-artikel" className="max-h-full max-w-full object-contain" />
+                          : <img src={zoneDraft.bumArtikelUrl} alt="Bum-artikel" className="max-h-full max-w-full object-contain" />
                         }
                       </div>
                       <div className="flex flex-col gap-1 flex-1 min-w-0">
@@ -1307,21 +1307,21 @@ export function ProductEditorPage() {
                         </span>
                         <button
                           type="button"
-                          onClick={() => void handleRemoveFixedLogoBg()}
-                          disabled={removingFixedLogoBg}
+                          onClick={() => void handleRemoveBumArtikelBg()}
+                          disabled={removingBumArtikelBg}
                           className="flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-40 disabled:cursor-default w-fit"
                         >
-                          {removingFixedLogoBg
+                          {removingBumArtikelBg
                             ? <Loader2 className="h-3 w-3 animate-spin" />
                             : <Wand2 className="h-3 w-3" />
                           }
-                          {removingFixedLogoBg ? "Fjerner baggrund…" : "Fjern baggrund"}
+                          {removingBumArtikelBg ? "Fjerner baggrund…" : "Fjern baggrund"}
                         </button>
                       </div>
                       <button
                         type="button"
-                        onClick={handleRemoveFixedLogo}
-                        disabled={removingFixedLogoBg}
+                        onClick={handleRemoveBumArtikel}
+                        disabled={removingBumArtikelBg}
                         className="text-amber-700 hover:text-red-600 disabled:opacity-40"
                         aria-label="Fjern bum-artikel"
                       >
@@ -1329,7 +1329,7 @@ export function ProductEditorPage() {
                       </button>
                     </div>
 
-                    {/* Technique for fixed logo */}
+                    {/* Technique for bum-artikel */}
                     <div className="space-y-1">
                       <Label className="text-xs">Print-teknik for bum-artikel</Label>
                       <div className="flex flex-wrap gap-1.5">
@@ -1337,9 +1337,9 @@ export function ProductEditorPage() {
                           <button
                             key={t || "_none"}
                             type="button"
-                            onClick={() => setZoneDraft((prev) => ({ ...prev, fixedLogoTechnique: t || undefined }))}
+                            onClick={() => setZoneDraft((prev) => ({ ...prev, bumArtikelTechnique: t || undefined }))}
                             className={`px-2.5 py-1 rounded text-xs border transition-colors ${
-                              (zoneDraft.fixedLogoTechnique ?? "") === t
+                              (zoneDraft.bumArtikelTechnique ?? "") === t
                                 ? "bg-amber-500 text-white border-amber-500 font-medium"
                                 : "bg-background border-input hover:bg-muted"
                             }`}
@@ -1350,15 +1350,15 @@ export function ProductEditorPage() {
                       </div>
                     </div>
 
-                    {/* Colour count for fixed logo */}
+                    {/* Colour count for bum-artikel */}
                     <div className="flex items-center gap-3">
                       <Label className="text-xs shrink-0">Farver (0 = fuld)</Label>
                       <input
                         type="number"
                         min={0}
                         max={8}
-                        value={zoneDraft.fixedLogoColorCount ?? 0}
-                        onChange={(e) => setZoneDraft((prev) => ({ ...prev, fixedLogoColorCount: Number(e.target.value) }))}
+                        value={zoneDraft.bumArtikelColorCount ?? 0}
+                        onChange={(e) => setZoneDraft((prev) => ({ ...prev, bumArtikelColorCount: Number(e.target.value) }))}
                         className="w-16 h-7 text-xs border border-input rounded px-2"
                       />
                     </div>
@@ -1366,13 +1366,13 @@ export function ProductEditorPage() {
                   ) : (
                     <div>
                       <input
-                        id="fixed-logo-upload"
+                        id="bum-artikel-upload"
                         type="file"
                         accept="image/png,image/jpeg,image/svg+xml"
                         className="hidden"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
-                          if (file) void handleFixedLogoUpload(file);
+                          if (file) void handleBumArtikelUpload(file);
                           e.currentTarget.value = "";
                         }}
                       />
@@ -1380,11 +1380,11 @@ export function ProductEditorPage() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        disabled={uploadingFixedLogo}
-                        onClick={() => document.getElementById("fixed-logo-upload")?.click()}
+                        disabled={uploadingBumArtikel}
+                        onClick={() => document.getElementById("bum-artikel-upload")?.click()}
                         className="gap-2"
                       >
-                        {uploadingFixedLogo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                        {uploadingBumArtikel ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
                         Upload bum-artikel
                       </Button>
                     </div>
@@ -1455,7 +1455,7 @@ export function ProductEditorPage() {
                   Fysisk: {zone.maxPhysicalWidthMm}×{zone.maxPhysicalHeightMm} mm &nbsp;·&nbsp; Farver: {zone.maxColors || "∞"}
                 </p>
                 <p className="text-xs text-muted-foreground">Teknikker: {zone.allowedTechniques.join(", ") || "Ingen"}</p>
-                {zone.fixedLogoUrl && (
+                {zone.bumArtikelUrl && (
                   <p className="text-xs text-amber-700 flex items-center gap-1">
                     <Lock className="h-3 w-3" /> Bum-artikel sat
                   </p>

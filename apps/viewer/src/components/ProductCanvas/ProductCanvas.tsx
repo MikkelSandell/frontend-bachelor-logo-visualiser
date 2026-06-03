@@ -202,12 +202,12 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
 
   const [productImage] = useImage(viewedImageUrl);
 
-  // Build URL map for fixed logos — all zones on the current side that have one
-  const fixedLogoUrlMap: Record<string, string> = {};
+  // Build URL map for bum-artikler — all zones on the current side that have one
+  const bumArtikelUrlMap: Record<string, string> = {};
   for (const zone of allSideZones) {
-    if (zone.fixedLogoUrl) fixedLogoUrlMap[zone.id] = zone.fixedLogoUrl;
+    if (zone.bumArtikelUrl) bumArtikelUrlMap[zone.id] = zone.bumArtikelUrl;
   }
-  const fixedLogoImages = useMultipleImages(fixedLogoUrlMap);
+  const bumArtikelImages = useMultipleImages(bumArtikelUrlMap);
 
   // Build URL map: zoneId → logo URL for active zones that have an assignment
   const zoneLogoUrlMap: Record<string, string> = {};
@@ -221,7 +221,7 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
 
   const [logoStates, setLogoStates] = useState<Record<string, LogoState>>({});
   const [processedLogoImages, setProcessedLogoImages] = useState<Record<string, HTMLImageElement | undefined>>({});
-  const [processedFixedLogoImages, setProcessedFixedLogoImages] = useState<Record<string, HTMLImageElement | undefined>>({});
+  const [processedBumArtikelImages, setProcessedBumArtikelImages] = useState<Record<string, HTMLImageElement | undefined>>({});
   const [textStates, setTextStates] = useState<Record<string, TextState>>({});
   // Which canvas element (logo or text) is currently selected for the Transformer
   const [focusedElement, setFocusedElement] = useState<FocusedElement>(null);
@@ -234,7 +234,7 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const nodeRefs = useRef<Record<string, Konva.Image | null>>({});
-  const fixedLogoNodeRefs = useRef<Record<string, Konva.Image | null>>({});
+  const bumArtikelNodeRefs = useRef<Record<string, Konva.Image | null>>({});
   const textNodeRefs = useRef<Record<string, Konva.Text | null>>({});
   const processedImageCache = useRef<Map<string, HTMLImageElement>>(new Map());
 
@@ -341,23 +341,23 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoneTechniqueAssignments, processedLogoImages, logoImages]);
 
-  // ─── Process fixed logo colour count (admin-set, read-only in viewer) ─────
+  // ─── Process bum-artikel colour count (admin-set, read-only in viewer) ─────
 
   useEffect(() => {
     let cancelled = false;
     async function run() {
-      const entries = Object.entries(fixedLogoImages).filter(
+      const entries = Object.entries(bumArtikelImages).filter(
         (entry): entry is [string, HTMLImageElement] => !!entry[1]
       );
-      if (entries.length === 0) { if (!cancelled) setProcessedFixedLogoImages({}); return; }
+      if (entries.length === 0) { if (!cancelled) setProcessedBumArtikelImages({}); return; }
 
       const processed = await Promise.all(
         entries.map(async ([zoneId, img]) => {
           const zone = product.printZones.find((z) => z.id === zoneId);
-          const count = zone?.fixedLogoColorCount ?? 0;
+          const count = zone?.bumArtikelColorCount ?? 0;
           if (!count) return [zoneId, img] as const;
 
-          const cacheKey = `fixed:${img.src}:${count}`;
+          const cacheKey = `bumArtikel:${img.src}:${count}`;
           const cached = processedImageCache.current.get(cacheKey);
           if (cached) return [zoneId, cached] as const;
 
@@ -366,22 +366,22 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
           return [zoneId, result] as const;
         })
       );
-      if (!cancelled) setProcessedFixedLogoImages(Object.fromEntries(processed));
+      if (!cancelled) setProcessedBumArtikelImages(Object.fromEntries(processed));
     }
     run().catch(() => {});
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fixedLogoImages]);
+  }, [bumArtikelImages]);
 
-  // ─── Apply technique filter to fixed logo nodes (admin-set, read-only) ────
+  // ─── Apply technique filter to bum-artikel nodes (admin-set, read-only) ───
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => {
-      for (const [zoneId, node] of Object.entries(fixedLogoNodeRefs.current)) {
+      for (const [zoneId, node] of Object.entries(bumArtikelNodeRefs.current)) {
         if (!node) continue;
-        if (!(processedFixedLogoImages[zoneId] ?? fixedLogoImages[zoneId])) continue;
+        if (!(processedBumArtikelImages[zoneId] ?? bumArtikelImages[zoneId])) continue;
         const zone = product.printZones.find((z) => z.id === zoneId);
-        const cfg = getTechniqueFilterConfig(zone?.fixedLogoTechnique);
+        const cfg = getTechniqueFilterConfig(zone?.bumArtikelTechnique);
         const attrs: Record<string, unknown> = { filters: cfg.filters };
         if (cfg.blurRadius !== undefined) attrs.blurRadius = cfg.blurRadius;
         if (cfg.noise      !== undefined) attrs.noise      = cfg.noise;
@@ -394,7 +394,7 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
     });
     return () => cancelAnimationFrame(raf);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [processedFixedLogoImages, fixedLogoImages]);
+  }, [processedBumArtikelImages, bumArtikelImages]);
 
   // ─── Reset text placement when its assignment changes ─────────────────────
 
@@ -560,29 +560,29 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
     const exportZoneSet = new Set(zones.map((z) => z.id));
     const exportZones = zones.filter((z) => activeZoneIds.includes(z.id));
 
-    // Fixed logos are composited first (bottom layer) so the customer logo renders on top.
-    // Use all side zones (not just active ones) — fixed logos are always visible on the canvas
+    // Bum-artikler are composited first (bottom layer) so the customer logo renders on top.
+    // Use all side zones (not just active ones) — bum-artikler are always visible on the canvas
     // regardless of whether the user has activated the zone.
-    const fixedLogoPlacements = zones.flatMap((zone) => {
-      if (!zone.fixedLogoFileId || zone.fixedLogoX == null) return [];
-      const fixedColorCount = zone.fixedLogoColorCount ?? 0;
-      const fixedLogoWidth  = zone.fixedLogoWidth ?? 0;
+    const bumArtikelPlacements = zones.flatMap((zone) => {
+      if (!zone.bumArtikelFileId || zone.bumArtikelX == null) return [];
+      const bumColorCount = zone.bumArtikelColorCount ?? 0;
+      const bumArtikelWidth = zone.bumArtikelWidth ?? 0;
       const isRightArm = /right/i.test(zone.name);
       // Admin stores raw coordinates; viewer mirrors right arm for display.
       // Apply the same mirror here so the export matches the canvas preview.
-      const exportFixedLogoX = isRightArm
-        ? product.imageWidth - (zone.fixedLogoX) - fixedLogoWidth
-        : zone.fixedLogoX;
+      const exportBumArtikelX = isRightArm
+        ? product.imageWidth - (zone.bumArtikelX) - bumArtikelWidth
+        : zone.bumArtikelX;
       return [{
         zoneId: zone.id,
-        logoId: zone.fixedLogoFileId,
-        logoX: exportFixedLogoX,
-        logoY: zone.fixedLogoY ?? 0,
-        logoWidth: fixedLogoWidth,
-        logoHeight: zone.fixedLogoHeight ?? 0,
-        ...(zone.fixedLogoTechnique ? { selectedTechniqueName: zone.fixedLogoTechnique } : {}),
-        colorCount: fixedColorCount,
-        maxColors: Math.max(fixedColorCount + 1, 8),
+        logoId: zone.bumArtikelFileId,
+        logoX: exportBumArtikelX,
+        logoY: zone.bumArtikelY ?? 0,
+        logoWidth: bumArtikelWidth,
+        logoHeight: zone.bumArtikelHeight ?? 0,
+        ...(zone.bumArtikelTechnique ? { selectedTechniqueName: zone.bumArtikelTechnique } : {}),
+        colorCount: bumColorCount,
+        maxColors: Math.max(bumColorCount + 1, 8),
       }];
     });
 
@@ -634,7 +634,7 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
       productId: product.id,
       backgroundImageUrl,
       placements: [
-        ...fixedLogoPlacements.filter((p) => exportZoneSet.has(p.zoneId)),
+        ...bumArtikelPlacements.filter((p) => exportZoneSet.has(p.zoneId)),
         ...logoPlacements.filter((p) => exportZoneSet.has(p.zoneId)),
       ],
       textPlacements: textPlacements.filter((p) => exportZoneSet.has(p.zoneId)),
@@ -693,7 +693,7 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
     // pattern as handleExportPdf. Without this, buildExportPayloadForZones returns
     // empty placements when the logo was just assigned and hasn't rendered yet.
     const { nextLogoStates, nextTextStates } = await ensureExportStatesForZones(visibleZones);
-    // Use allSideZones (not just visibleZones) so fixed logos from all zones on this
+    // Use allSideZones (not just visibleZones) so bum-artikler from all zones on this
     // side are included regardless of whether the zone is active.
     // User logos and text are still filtered to active zones inside the function.
     const payload = buildExportPayloadForZones(allSideZones, viewedImageUrl, nextLogoStates, nextTextStates);
@@ -944,24 +944,24 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
               );
             })}
 
-            {/* Fixed logos — locked, non-interactive, always below customer logos */}
+            {/* Bum-artikler — locked, non-interactive, always below customer logos */}
             {allSideZones.map((zone) => {
-              const img = fixedLogoImages[zone.id];
-              if (!img || zone.fixedLogoX == null) return null;
-              const displayImg = processedFixedLogoImages[zone.id] ?? img;
+              const img = bumArtikelImages[zone.id];
+              if (!img || zone.bumArtikelX == null) return null;
+              const displayImg = processedBumArtikelImages[zone.id] ?? img;
               const isRightArm = /right/i.test(zone.name);
               const logoDispX = isRightArm
-                ? product.imageWidth - (zone.fixedLogoX) - (zone.fixedLogoWidth ?? 0)
-                : zone.fixedLogoX;
+                ? product.imageWidth - (zone.bumArtikelX) - (zone.bumArtikelWidth ?? 0)
+                : zone.bumArtikelX;
               return (
                 <KonvaImage
-                  key={`fixed-logo-${zone.id}`}
-                  ref={(node) => { fixedLogoNodeRefs.current[zone.id] = node; }}
+                  key={`bum-artikel-${zone.id}`}
+                  ref={(node) => { bumArtikelNodeRefs.current[zone.id] = node; }}
                   image={displayImg}
                   x={logoDispX * scale}
-                  y={(zone.fixedLogoY ?? 0) * scale}
-                  width={(zone.fixedLogoWidth ?? 0) * scale}
-                  height={(zone.fixedLogoHeight ?? 0) * scale}
+                  y={(zone.bumArtikelY ?? 0) * scale}
+                  width={(zone.bumArtikelWidth ?? 0) * scale}
+                  height={(zone.bumArtikelHeight ?? 0) * scale}
                   listening={false}
                   opacity={activeZoneIds.includes(zone.id) ? 1 : 0.55}
                 />

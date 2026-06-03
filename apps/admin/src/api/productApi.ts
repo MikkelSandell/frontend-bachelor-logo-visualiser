@@ -43,14 +43,14 @@ type ZoneUpsertPayload = {
   maxColors: number;
   imageUrl?: string;
   allowedTechniques: string[];
-  fixedLogoUrl?: string;
-  fixedLogoFileId?: string;
-  fixedLogoX?: number;
-  fixedLogoY?: number;
-  fixedLogoWidth?: number;
-  fixedLogoHeight?: number;
-  fixedLogoTechnique?: string;
-  fixedLogoColorCount?: number;
+  bumArtikelUrl?: string;
+  bumArtikelFileId?: string;
+  bumArtikelX?: number;
+  bumArtikelY?: number;
+  bumArtikelWidth?: number;
+  bumArtikelHeight?: number;
+  bumArtikelTechnique?: string;
+  bumArtikelColorCount?: number;
 };
 
 export type ProductUpsertPayload = {
@@ -193,14 +193,14 @@ function toZoneUpsertPayload(zone: PrintZone): ZoneUpsertPayload {
     maxColors: Math.round(zone.maxColors),
     imageUrl: zone.imageUrl || undefined,
     allowedTechniques: [...zone.allowedTechniques],
-    fixedLogoUrl: zone.fixedLogoUrl,
-    fixedLogoFileId: zone.fixedLogoFileId,
-    fixedLogoX: zone.fixedLogoX,
-    fixedLogoY: zone.fixedLogoY,
-    fixedLogoWidth: zone.fixedLogoWidth,
-    fixedLogoHeight: zone.fixedLogoHeight,
-    fixedLogoTechnique: zone.fixedLogoTechnique,
-    fixedLogoColorCount: zone.fixedLogoColorCount,
+    bumArtikelUrl: zone.bumArtikelUrl,
+    bumArtikelFileId: zone.bumArtikelFileId,
+    bumArtikelX: zone.bumArtikelX,
+    bumArtikelY: zone.bumArtikelY,
+    bumArtikelWidth: zone.bumArtikelWidth,
+    bumArtikelHeight: zone.bumArtikelHeight,
+    bumArtikelTechnique: zone.bumArtikelTechnique,
+    bumArtikelColorCount: zone.bumArtikelColorCount,
   };
 }
 
@@ -324,15 +324,15 @@ export async function deleteProduct(id: string): Promise<void> {
 }
 
 
-export interface FixedLogoUploadResult {
+export interface BumArtikelUploadResult {
   logoId: string;
   logoUrl: string;
 }
 
-export async function uploadFixedLogo(file: File): Promise<FixedLogoUploadResult> {
+export async function uploadBumArtikel(file: File): Promise<BumArtikelUploadResult> {
   const formData = new FormData();
   formData.append("file", file);
-  const response = await client.post<FixedLogoUploadResult>("/logos/upload", formData, {
+  const response = await client.post<BumArtikelUploadResult>("/logos/upload", formData, {
     headers: { "Content-Type": "multipart/form-data" },
   });
   return response.data;
