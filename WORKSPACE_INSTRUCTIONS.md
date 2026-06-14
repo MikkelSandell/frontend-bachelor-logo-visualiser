@@ -1,6 +1,4 @@
-# CLAUDE.md – Logo Visualizer Frontend
-
-This file gives Claude (and other AI assistants) the context needed to work effectively in this repository.
+# WORKSPACE_INSTRUCTIONS.md – Logo Visualizer Frontend
 
 ---
 
