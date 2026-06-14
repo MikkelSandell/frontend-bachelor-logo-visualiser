@@ -43,7 +43,7 @@ Both apps use the **b2b design system**. Key Tailwind tokens:
 
 UI components live in `src/components/ui/` (Button, Card, Input, Badge, Label). Use CVA variants. Use `cn()` from `src/lib/utils.ts` for class merging — never string templates.
 
-## Rules Copilot must follow
+## Rules to follow
 
 - **Language**: UI strings in Danish. All code, identifiers, and comments in English.
 - **Types**: All domain types come from `@logo-visualizer/shared`. Never redefine `Product`, `PrintZone`, or `PrintTechnique` locally. `PrintZone` includes an `imageUrl` field — the blank product photo for that specific print position (same colour across all zones). `PrintZone` also carries optional bum-artikel fields (`bumArtikelUrl`, `bumArtikelFileId`, `bumArtikelX/Y/Width/Height`, `bumArtikelTechnique`, `bumArtikelColorCount`) — these are set only by the admin and are read-only in the viewer.
