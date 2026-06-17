@@ -238,7 +238,10 @@ export const ProductCanvas = forwardRef<ProductCanvasHandle, Props>(function Pro
   const textNodeRefs = useRef<Record<string, Konva.Text | null>>({});
   const processedImageCache = useRef<Map<string, HTMLImageElement>>(new Map());
 
+  // canvas display size
   const scale = Math.min(1, MAX_WIDTH / product.imageWidth);
+
+  // convert canvas pixels → product-image pixels before sending to API
   const canvasWidth  = product.imageWidth  * scale;
   const canvasHeight = product.imageHeight * scale;
 
